@@ -9,7 +9,7 @@ import (
 )
 
 func GetPool(ctx context.Context, config *config.Config) (*pgxpool.Pool, error) {
-	ctx, cancelFunc := context.WithTimeout(ctx, 250*time.Millisecond)
+	ctx, cancelFunc := context.WithTimeout(ctx, 7*time.Second)
 	defer cancelFunc()
 
 	parseConfig, err := pgxpool.ParseConfig(config.ConnString)

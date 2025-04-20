@@ -29,7 +29,7 @@ func (b *BotStorage) Save(ctx context.Context, message *models.Message) error {
 		message.Timestamp,
 	)
 	if err != nil {
-		return fmt.Errorf("insert updates err: %v", err)
+		return fmt.Errorf("storage insert updates err: %v", err)
 	}
 
 	if exec.RowsAffected() != 1 {

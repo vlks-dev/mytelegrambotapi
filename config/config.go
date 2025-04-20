@@ -15,6 +15,8 @@ type Config struct {
 	MaxPgxConnIdleTime time.Duration
 	MaxPgxConnLifeTime time.Duration
 	HealthCheckPeriod  time.Duration
+	R1Token            string
+	R1ProToken         string
 }
 
 func LoadEnvCfg(source string) (*Config, error) {
@@ -63,6 +65,8 @@ func LoadEnvCfg(source string) (*Config, error) {
 		MaxPgxConnIdleTime: time.Duration(parsedPgxConnIdleTime),
 		MaxPgxConnLifeTime: time.Duration(parsedMaxPgxConnLifeTime),
 		HealthCheckPeriod:  time.Duration(parsedHealthCheckPeriod),
+		R1Token:            os.Getenv("R1_TOKEN"),
+		R1ProToken:         os.Getenv("R1_PRO_TOKEN"),
 	}
 	return cfg, nil
 }
