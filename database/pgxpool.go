@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mytelegrambot/config"
+	"log"
 	"time"
 )
 
@@ -30,5 +31,9 @@ func GetPool(ctx context.Context, config *config.Config) (*pgxpool.Pool, error) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect db\n[ERROR]: %v", err)
 	}
+
+	deadline, _ := ctx.Deadline()
+	log.Printf("db pool estabilished, time left: %v\n", time.Until(deadline))
+
 	return pool, nil
 }
