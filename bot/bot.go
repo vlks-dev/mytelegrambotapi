@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/mytelegrambot/config"
@@ -11,30 +12,26 @@ import (
 	"strconv"
 )
 
-type Storage interface {
-	Save(ctx context.Context, message *models.Message) error
-}
-
-type R1 interface {
-	AnswerQuestion(ctx context.Context, message string) (string, error)
-}
-
 type Bot struct {
-	storage Storage
-	r1      R1
 	api     *tgbotapi.BotAPI
+	storage Storage
+	r1      R1Client
 }
 
-func NewBot(config *config.Config, storage Storage, r1 R1) (*Bot, error) {
+func NewBot(config *config.Config, storage Storage, r1 R1Client) (*Bot, error) {
 	botAPI, err := tgbotapi.NewBotAPI(config.Token)
 	if err != nil {
 		return nil, fmt.Errorf("parsing telegram bot token err: %v", err)
 	}
 
-	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 25
+	botAPI.Debug = config.BotEnv
 
-	botAPI.Debug = true
+	switch {
+	case botAPI.Debug == true:
+		log.Printf("authorized on account @%v in debug mode! (%v)\n", botAPI.Self.UserName, botAPI.Self.FirstName)
+	case botAPI.Debug == false:
+		log.Printf("authorized on account @%v! (%v)\n", botAPI.Self.UserName, botAPI.Self.FirstName)
+	}
 
 	return &Bot{
 		storage: storage,
@@ -43,104 +40,31 @@ func NewBot(config *config.Config, storage Storage, r1 R1) (*Bot, error) {
 	}, nil
 }
 
-func (b *Bot) GetUpdates(ctx context.Context) error {
+type Storage interface {
+	Save(ctx context.Context, msg *models.Message) error
+}
 
+type R1Client interface {
+	AnswerQuestion(ctx context.Context, question string) (string, error)
+}
+
+// GetUpdates запускает цикл получения апдейтов и делегирует их обработку
+func (b *Bot) GetUpdates(ctx context.Context) error {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 25
-
 	updates := b.api.GetUpdatesChan(u)
-
-	var (
-		sent     []tgbotapi.Message
-		incoming []*tgbotapi.Message
-	)
 
 	for {
 		select {
-		case update, ok := <-updates:
+		case upd, ok := <-updates:
 			if !ok {
-				log.Println("update channel closed (can't get updates)")
-				return nil
+				return nil // канал закрылся
 			}
-			if update.Message != nil {
-				log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
-				incoming = append(incoming, update.Message)
-
-				for _, msg := range incoming {
-					updMessage := &models.Message{
-						MessageID:    msg.MessageID,
-						FromID:       strconv.FormatInt(msg.From.ID, 10),
-						FromUsername: msg.From.UserName,
-						Text:         msg.Text,
-						Timestamp:    msg.Time(),
-					}
-					err := b.storage.Save(ctx, updMessage)
-					if err != nil {
-						return fmt.Errorf("failed to save update message\n(%v)\n[ERROR]: %w", updMessage, err)
-					}
-					updMessage = nil
-				}
-
-				answer, err := b.r1.AnswerQuestion(ctx, update.Message.Text)
-				if err != nil {
-					return fmt.Errorf("failed to answer on: %v\n[ERROR]: %w", update.Message.Text, err)
-				}
-
-				data := []byte(answer)
-				var response models.CompletionResponse
-				var errMsg models.ErrorR1Message
-
-				err = json.Unmarshal(data, &response)
-				if err != nil {
-					return fmt.Errorf("failed to unmarshal answer on: %v\n[ERROR]: %w", update.Message.Text, err)
-				}
-				if response.Choices == nil || len(response.Choices) == 0 {
-					err = json.Unmarshal(data, &errMsg)
-					if err != nil {
-						return fmt.Errorf("there is an error in AI service (CHECK TOKENS IF NOT SURE)\nfailed to unmarshal answer on: %v\n[ERROR]: %w", data, err)
-					}
-					errMessage := tgbotapi.NewMessage(update.Message.Chat.ID, fmt.Sprintf("[ERROR]: Code: %v, Message: %v", errMsg.Error.Code, errMsg.Error.Message))
-					message, err := b.api.Send(errMessage)
-					if err != nil {
-						return fmt.Errorf("failed to send error message\n(%v)\n[ERROR]: %w", errMessage, err)
-					}
-					fmt.Println(message)
-				}
-
-				for _, msg := range response.Choices {
-					r1Content := msg.Message.Content
-					newMessage := tgbotapi.NewMessage(update.Message.Chat.ID, r1Content)
-					answerMessage, err := b.api.Send(newMessage)
-					if err != nil {
-						return fmt.Errorf("failed to send answer (%v), err: %w", sent, err)
-					}
-					sent = append(sent, answerMessage)
-				}
-
-				for _, msg := range sent {
-					text := msg.Text
-					parsedRunes := []rune(text)
-					if len(parsedRunes) <= 200 {
-						text = string(parsedRunes)
-					} else {
-						fmt.Printf("[WARNING]: answer message too large (%d), saving beginnig...\n", len(msg.Text))
-						text = string(parsedRunes[:200])
-					}
-
-					ansMessage := &models.Message{
-						MessageID:    msg.MessageID,
-						FromID:       strconv.FormatInt(msg.From.ID, 10),
-						FromUsername: msg.From.UserName,
-						Text:         text,
-						Timestamp:    msg.Time(),
-					}
-
-					err = b.storage.Save(ctx, ansMessage)
-					if err != nil {
-						return fmt.Errorf("failed to save answers\n(%v)\n[ERROR]: %w", ansMessage, err)
-					}
-					ansMessage = nil
-				}
+			if upd.Message == nil {
+				continue
+			}
+			if err := b.processIncoming(ctx, upd.Message); err != nil {
+				return err
 			}
 
 		case <-ctx.Done():
@@ -148,9 +72,116 @@ func (b *Bot) GetUpdates(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
+}
+
+// processIncoming обрабатывает одно входящее сообщение
+func (b *Bot) processIncoming(ctx context.Context, msg *tgbotapi.Message) error {
+	text := truncate(msg.Text, 200)
+	log.Printf("[%s] %s", msg.From.UserName, text+"...")
+
+	// Сохранение входящего
+	in := &models.Message{
+		MessageID:    msg.MessageID,
+		FromID:       strconv.FormatInt(msg.From.ID, 10),
+		FromUsername: msg.From.UserName,
+		Text:         text,
+		Timestamp:    msg.Time(),
+	}
+	if err := b.saveMessage(ctx, in); err != nil {
+		return fmt.Errorf("save incoming: %w", err)
+	}
+
+	// Получаем ответ от AI
+	raw, err := b.r1.AnswerQuestion(ctx, msg.Text)
+	if errors.Is(err, ctx.Err()) == false {
+		//retry logic
+		log.Printf("Q/A context err: %v", err)
+		_, ctxErr := b.sendAnswer(msg.Chat.ID, "кажется, время ожидания ответа вышло, повторить запрос?")
+		if err != nil {
+			return fmt.Errorf("send context timeout warning: %w", ctxErr)
+		}
+	}
+	if err != nil && !errors.Is(err, ctx.Err()) {
+		return fmt.Errorf("AI error: %w", err)
+	}
+
+	// Парсим и отправляем ответы
+	choices, err := parseChoices(raw)
+	if err != nil {
+		return fmt.Errorf("parse AI response: %w", err)
+	}
+
+	for _, content := range choices {
+		sent, err := b.sendAnswer(msg.Chat.ID, content)
+		if err != nil {
+			return fmt.Errorf("send answer: %w", err)
+		}
+		// Обрезаем длинный текст и сохраняем
+		text = truncate(content, 200)
+		out := &models.Message{
+			MessageID:    sent.MessageID,
+			FromID:       strconv.FormatInt(sent.From.ID, 10),
+			FromUsername: sent.From.UserName,
+			Text:         text,
+			Timestamp:    sent.Time(),
+		}
+		if err := b.saveMessage(ctx, out); err != nil {
+			return fmt.Errorf("save outgoing: %w", err)
+		}
+		log.Printf("[%s] %s", msg.From.UserName, text+"...")
+	}
+	return nil
+}
+
+// saveMessage сохраняет сообщение в хранилище
+func (b *Bot) saveMessage(ctx context.Context, m *models.Message) error {
+	return b.storage.Save(ctx, m)
+}
+
+// sendAnswer отправляет текст в чат и возвращает отправленное сообщение
+func (b *Bot) sendAnswer(chatID int64, text string) (*tgbotapi.Message, error) {
+	msg := tgbotapi.NewMessage(chatID, text)
+	message, err := b.api.Send(msg)
+	if err != nil {
+		return nil, fmt.Errorf("send message (%v), err: %w", msg, err)
+	}
+	return &message, nil // Telegram API сам учитывает ctx внутри
 
 }
 
-func (b *Bot) GetBotInfo() (string, error) {
-	return fmt.Sprintf("bot: @%s (%s)", b.api.Self.UserName, b.api.Self.FirstName), nil
+// parseChoices разбирает JSON-ответ AI и возвращает список текстов
+func parseChoices(data string) ([]string, error) {
+	bytes := []byte(data)
+	var text []string
+	var response models.CompletionResponse
+	var errMsg models.ErrorR1Message
+
+	err := json.Unmarshal(bytes, &response)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response on, raw json:\n%v\n[ERROR]: %w", data, err)
+	}
+	if response.Choices == nil || len(response.Choices) == 0 {
+		err = json.Unmarshal(bytes, &errMsg)
+		if err != nil {
+			return nil, fmt.Errorf("there is an error in AI service (CHECK TOKENS IF NOT SURE)\nfailed to unmarshal answer on: %v\n[ERROR]: %w", data, err)
+		}
+
+		text = append(text, strconv.Itoa(errMsg.Error.Code), errMsg.Error.Message)
+		return text, nil // упрощённо
+	}
+
+	for _, k := range response.Choices {
+		text = append(text, k.Message.Content, fmt.Sprintf("потрачено %d токенов", response.Usage.TotalTokens))
+	}
+
+	return text, nil
+}
+
+// truncate обрезает строку до maxRunes
+func truncate(s string, maxRunes int) string {
+	runes := []rune(s)
+	if len(runes) <= maxRunes {
+		return s
+	}
+	return string(runes[:maxRunes])
 }

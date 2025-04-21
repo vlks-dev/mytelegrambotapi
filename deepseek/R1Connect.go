@@ -6,6 +6,7 @@ import (
 	"github.com/mytelegrambot/config"
 	"github.com/openai/openai-go" // imported as openai
 	"github.com/openai/openai-go/option"
+	"log"
 	"time"
 )
 
@@ -29,7 +30,7 @@ func NewR1(config *config.Config) *R1Client {
 }
 
 func (c *R1Client) AnswerQuestion(ctx context.Context, message string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
 	defer cancel()
 
 	completion, err := c.client.Chat.Completions.New(
@@ -41,11 +42,18 @@ func (c *R1Client) AnswerQuestion(ctx context.Context, message string) (string, 
 			Model: "deepseek/deepseek-chat-v3-0324:free",
 			//Model: "deepseek/deepseek-r1:free",
 		},
-		option.WithMaxRetries(3))
+		option.WithMaxRetries(3),
+		option.WithRequestTimeout(30*time.Second))
+
 	if err != nil {
-		return "", fmt.Errorf("[ERROR]: failed to get new deep-seek completion:\n%v", err)
+		if ctx.Err() != nil {
+			return "таймаут/отмена", ctx.Err()
+		}
+		return "ошибка получения ответа", fmt.Errorf("failed to get new deep-seek completion:\n%w", err)
 	}
 
-	return completion.RawJSON(), nil
+	deadline, _ := ctx.Deadline()
 
+	log.Printf("deepseek completion: %s, time left: %v", completion.ID, time.Until(deadline).Round(time.Second))
+	return completion.RawJSON(), nil
 }

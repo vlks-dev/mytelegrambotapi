@@ -45,13 +45,6 @@ func main() {
 		log.Fatal(err)
 	}
 
-	info, err := botApi.GetBotInfo()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	log.Printf("Authorized on account\n%s", info)
-
 	errCh := make(chan error)
 	go func() { errCh <- botApi.GetUpdates(ctx) }()
 	select {

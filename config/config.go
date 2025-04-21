@@ -17,7 +17,13 @@ type Config struct {
 	HealthCheckPeriod  time.Duration
 	R1Token            string
 	R1ProToken         string
+	BotEnv             bool
 }
+
+var (
+	cfg      *Config
+	botDebug bool
+)
 
 func LoadEnvCfg(source string) (*Config, error) {
 	err := godotenv.Load(source)
@@ -25,7 +31,7 @@ func LoadEnvCfg(source string) (*Config, error) {
 		return nil, fmt.Errorf("error getting enviroment file, in %v, err: %v", source, err)
 
 	}
-	var cfg *Config
+
 	parsedPgxConns, err := strconv.ParseInt(os.Getenv("MAX_PGX_CONN"), 10, 64)
 	if err != nil {
 		return nil, fmt.Errorf(
@@ -58,6 +64,13 @@ func LoadEnvCfg(source string) (*Config, error) {
 			err,
 		)
 	}
+
+	if os.Getenv("BOT_ENV") == "debug" {
+		botDebug = true
+	} else {
+		botDebug = false
+	}
+
 	cfg = &Config{
 		Token:              os.Getenv("TOKEN"),
 		ConnString:         os.Getenv("CONNECTION_STRING"),
@@ -67,6 +80,7 @@ func LoadEnvCfg(source string) (*Config, error) {
 		HealthCheckPeriod:  time.Duration(parsedHealthCheckPeriod),
 		R1Token:            os.Getenv("R1_TOKEN"),
 		R1ProToken:         os.Getenv("R1_PRO_TOKEN"),
+		BotEnv:             botDebug,
 	}
 	return cfg, nil
 }
