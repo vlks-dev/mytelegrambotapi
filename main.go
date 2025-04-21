@@ -40,7 +40,7 @@ func main() {
 
 	botStorage := storage.NewBotStorage(pool, botCfg)
 
-	botApi, err := bot.NewBotApi(botCfg, botStorage, r1)
+	botApi, err := bot.NewBot(botCfg, botStorage, r1)
 	if err != nil {
 		log.Fatal(err)
 	}
