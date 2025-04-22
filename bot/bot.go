@@ -93,14 +93,14 @@ func (b *Bot) processIncoming(ctx context.Context, msg *tgbotapi.Message) error 
 
 	// Получаем ответ от AI
 	raw, err := b.r1.AnswerQuestion(ctx, msg.Text)
-	if errors.Is(err, ctx.Err()) == false {
+	/*if errors.Is(err, ctx.Err()) == false {
 		//retry logic
 		log.Printf("Q/A context err: %v", err)
 		_, ctxErr := b.sendAnswer(msg.Chat.ID, "кажется, время ожидания ответа вышло, повторить запрос?")
 		if err != nil {
 			return fmt.Errorf("send context timeout warning: %w", ctxErr)
 		}
-	}
+	}*/
 	if err != nil && !errors.Is(err, ctx.Err()) {
 		return fmt.Errorf("AI error: %w", err)
 	}
