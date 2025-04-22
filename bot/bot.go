@@ -77,6 +77,10 @@ func (b *Bot) GetUpdates(ctx context.Context) error {
 // processIncoming обрабатывает одно входящее сообщение
 func (b *Bot) processIncoming(ctx context.Context, msg *tgbotapi.Message) error {
  const maxRetries = 2
+	var (
+	        raw string
+	        err error
+	    )
 	text := truncate(msg.Text, 200)
 	log.Printf("[%s] %s", msg.From.UserName, text+"...")
 
