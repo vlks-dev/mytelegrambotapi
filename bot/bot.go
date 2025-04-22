@@ -76,6 +76,7 @@ func (b *Bot) GetUpdates(ctx context.Context) error {
 
 // processIncoming обрабатывает одно входящее сообщение
 func (b *Bot) processIncoming(ctx context.Context, msg *tgbotapi.Message) error {
+ const maxRetries = 2
 	text := truncate(msg.Text, 200)
 	log.Printf("[%s] %s", msg.From.UserName, text+"...")
 
@@ -92,18 +93,31 @@ func (b *Bot) processIncoming(ctx context.Context, msg *tgbotapi.Message) error 
 	}
 
 	// Получаем ответ от AI
-	raw, err := b.r1.AnswerQuestion(ctx, msg.Text)
-	/*if errors.Is(err, ctx.Err()) == false {
-		//retry logic
-		log.Printf("Q/A context err: %v", err)
-		_, ctxErr := b.sendAnswer(msg.Chat.ID, "кажется, время ожидания ответа вышло, повторить запрос?")
-		if err != nil {
-			return fmt.Errorf("send context timeout warning: %w", ctxErr)
-		}
-	}*/
-	if err != nil && !errors.Is(err, ctx.Err()) {
-		return fmt.Errorf("AI error: %w", err)
-	}
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+        raw, err = b.r1.AnswerQuestion(ctx, msg.Text)
+        if err == nil {
+            // получили ответ
+            break
+        }
+
+        // если вышел дедлайн или контекст отменён — ретраим
+        if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+            log.Printf("Attempt %d: timeout, retrying…", attempt+1)
+            if attempt < maxRetries {
+                continue
+            }
+            // все попытки исчерпаны
+            if _, sendErr := b.sendAnswer(msg.Chat.ID,
+                "Время ожидания вышло, попробуем ещё раз?"); sendErr != nil {
+                return fmt.Errorf("send timeout notice failed: %w", sendErr)
+            }
+            return fmt.Errorf("timeout after %d retries: %w", maxRetries+1, err)
+        }
+
+        // любая другая ошибка — вылетаем
+        return fmt.Errorf("AI error: %w", err)
+    }
+
 
 	// Парсим и отправляем ответы
 	choices, err := parseChoices(raw)

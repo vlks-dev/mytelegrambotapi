@@ -30,7 +30,7 @@ func NewR1(config *config.Config) *R1Client {
 }
 
 func (c *R1Client) AnswerQuestion(ctx context.Context, message string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 100*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 40*time.Second)
 	defer cancel()
 
 	completion, err := c.client.Chat.Completions.New(
@@ -41,9 +41,7 @@ func (c *R1Client) AnswerQuestion(ctx context.Context, message string) (string, 
 			},
 			Model: "deepseek/deepseek-chat-v3-0324:free",
 			//Model: "deepseek/deepseek-r1:free",
-		},
-		option.WithMaxRetries(3),
-		option.WithRequestTimeout(100*time.Second))
+		})
 
 	if err != nil {
 		if ctx.Err() != nil {
