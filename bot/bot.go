@@ -54,6 +54,16 @@ func (b *Bot) GetUpdates(ctx context.Context) error {
 	u.Timeout = 25
 	updates := b.api.GetUpdatesChan(u)
 
+	commands, err := b.api.GetMyCommands()
+	if err != nil {
+		return fmt.Errorf("get commands: %w", err)
+	}
+	if len(commands) == 0 {
+		log.Printf("no commands found for: @%v", b.api.Self.UserName)
+	}
+
+	log.Printf("can use next commands: %v", commands)
+
 	for {
 		select {
 		case upd, ok := <-updates:
@@ -76,11 +86,11 @@ func (b *Bot) GetUpdates(ctx context.Context) error {
 
 // processIncoming обрабатывает одно входящее сообщение
 func (b *Bot) processIncoming(ctx context.Context, msg *tgbotapi.Message) error {
- const maxRetries = 2
+	const maxRetries = 2
 	var (
-	        raw string
-	        err error
-	    )
+		raw string
+		err error
+	)
 	text := truncate(msg.Text, 200)
 	log.Printf("[%s] %s", msg.From.UserName, text+"...")
 
@@ -98,30 +108,33 @@ func (b *Bot) processIncoming(ctx context.Context, msg *tgbotapi.Message) error 
 
 	// Получаем ответ от AI
 	for attempt := 0; attempt <= maxRetries; attempt++ {
-        raw, err = b.r1.AnswerQuestion(ctx, msg.Text)
-        if err == nil {
-            // получили ответ
-            break
-        }
+		sendMockErr := b.sendMock(msg.Chat.ID, attempt)
+		if sendMockErr != nil {
+			log.Printf("sendMockErr: %v", sendMockErr)
+		}
+		raw, err = b.r1.AnswerQuestion(ctx, msg.Text)
+		if err == nil {
+			// получили ответ
+			break
+		}
 
-        // если вышел дедлайн или контекст отменён — ретраим
-        if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-            log.Printf("Attempt %d: timeout, retrying…", attempt+1)
-            if attempt < maxRetries {
-                continue
-            }
-            // все попытки исчерпаны
-            if _, sendErr := b.sendAnswer(msg.Chat.ID,
-                "Время ожидания вышло, попробуем ещё раз?"); sendErr != nil {
-                return fmt.Errorf("send timeout notice failed: %w", sendErr)
-            }
-            return fmt.Errorf("timeout after %d retries: %w", maxRetries+1, err)
-        }
+		// если вышел дедлайн, ретраим
+		if errors.Is(err, context.DeadlineExceeded) {
+			log.Printf("Attempt %d: timeout, retrying…", attempt+1)
+			if attempt < maxRetries {
+				continue
+			}
+			// все попытки исчерпаны
+			if _, sendErr := b.sendAnswer(msg.Chat.ID,
+				"Время ожидания вышло, попробуем ещё раз?"); sendErr != nil {
+				return fmt.Errorf("send timeout notice failed: %w", sendErr)
+			}
+			return fmt.Errorf("timeout after %d retries: %w", maxRetries+1, err)
+		}
 
-        // любая другая ошибка — вылетаем
-        return fmt.Errorf("AI error: %w", err)
-    }
-
+		// любая другая ошибка, вылетаем
+		return fmt.Errorf("AI error: %w", err)
+	}
 
 	// Парсим и отправляем ответы
 	choices, err := parseChoices(raw)
@@ -169,30 +182,39 @@ func (b *Bot) sendAnswer(chatID int64, text string) (*tgbotapi.Message, error) {
 
 // parseChoices разбирает JSON-ответ AI и возвращает список текстов
 func parseChoices(data string) ([]string, error) {
-	bytes := []byte(data)
-	var text []string
 	var response models.CompletionResponse
 	var errMsg models.ErrorR1Message
 
-	err := json.Unmarshal(bytes, &response)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response on, raw json:\n%v\n[ERROR]: %w", data, err)
-	}
-	if response.Choices == nil || len(response.Choices) == 0 {
-		err = json.Unmarshal(bytes, &errMsg)
-		if err != nil {
-			return nil, fmt.Errorf("there is an error in AI service (CHECK TOKENS IF NOT SURE)\nfailed to unmarshal answer on: %v\n[ERROR]: %w", data, err)
+	err := json.Unmarshal([]byte(data), &response)
+	if err == nil && len(response.Choices) > 0 {
+		var text []string
+		for _, choice := range response.Choices {
+			if choice.Message.Content != "" {
+				text = append(text, choice.Message.Content)
+			}
 		}
-
-		text = append(text, strconv.Itoa(errMsg.Error.Code), errMsg.Error.Message)
-		return text, nil // упрощённо
+		text = append(text, fmt.Sprintf("потрачено %d токенов", response.Usage.TotalTokens))
+		return text, nil
 	}
 
-	for _, k := range response.Choices {
-		text = append(text, k.Message.Content, fmt.Sprintf("потрачено %d токенов", response.Usage.TotalTokens))
+	// Попытка распарсить ошибку
+	if err = json.Unmarshal([]byte(data), &errMsg); err != nil {
+		return nil, fmt.Errorf("не удалось распарсить ответ:\n%v\n[ОШИБКА]: %w", data, err)
 	}
+	return []string{"Закончились токены! Попробуйте завтра"}, nil
+}
 
-	return text, nil
+func (b *Bot) sendMock(chatID int64, attempt int) error {
+	_, err := b.sendAnswer(chatID, fmt.Sprintf("Ваш ответ генерируется №%d, подождите!", attempt))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (b *Bot) deleteMock(chatID int64) error {
+	// TODO: use original tg api
+	return nil
 }
 
 // truncate обрезает строку до maxRunes
