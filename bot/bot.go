@@ -12,6 +12,14 @@ import (
 	"strconv"
 )
 
+type Storage interface {
+	Save(ctx context.Context, msg *models.Message) error
+}
+
+type R1Client interface {
+	AnswerQuestion(ctx context.Context, question string) (string, error)
+}
+
 type Bot struct {
 	api     *tgbotapi.BotAPI
 	storage Storage
@@ -40,19 +48,20 @@ func NewBot(config *config.Config, storage Storage, r1 R1Client) (*Bot, error) {
 	}, nil
 }
 
-type Storage interface {
-	Save(ctx context.Context, msg *models.Message) error
-}
-
-type R1Client interface {
-	AnswerQuestion(ctx context.Context, question string) (string, error)
-}
-
 // GetUpdates запускает цикл получения апдейтов и делегирует их обработку
 func (b *Bot) GetUpdates(ctx context.Context) error {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 25
 	updates := b.api.GetUpdatesChan(u)
+	commands, err := b.api.GetMyCommands()
+	if err != nil {
+		return fmt.Errorf("get commands: %w", err)
+	}
+	if len(commands) == 0 {
+		log.Printf("no commands found for: @%v", b.api.Self.UserName)
+	}
+
+	log.Printf("can use next commands: %v", commands)
 
 	for {
 		select {
@@ -93,6 +102,10 @@ func (b *Bot) processIncoming(ctx context.Context, msg *tgbotapi.Message) error 
 
 	// Получаем ответ от AI
 	raw, err := b.r1.AnswerQuestion(ctx, msg.Text)
+	sendMockErr := b.sendMock(msg.Chat.ID)
+	if sendMockErr != nil {
+		log.Printf("sendMockErr: %v", sendMockErr)
+	}
 	if errors.Is(err, ctx.Err()) == false {
 		//retry logic
 		log.Printf("Q/A context err: %v", err)
@@ -133,6 +146,14 @@ func (b *Bot) processIncoming(ctx context.Context, msg *tgbotapi.Message) error 
 	return nil
 }
 
+func (b *Bot) sendMock(chatID int64) error {
+	_, err := b.sendAnswer(chatID, "Ваш ответ генерируется, подождите!")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // saveMessage сохраняет сообщение в хранилище
 func (b *Bot) saveMessage(ctx context.Context, m *models.Message) error {
 	return b.storage.Save(ctx, m)
@@ -149,32 +170,28 @@ func (b *Bot) sendAnswer(chatID int64, text string) (*tgbotapi.Message, error) {
 
 }
 
-// parseChoices разбирает JSON-ответ AI и возвращает список текстов
+// ParseChoices разбирает JSON-ответ AI и возвращает список текстов
 func parseChoices(data string) ([]string, error) {
-	bytes := []byte(data)
-	var text []string
 	var response models.CompletionResponse
 	var errMsg models.ErrorR1Message
 
-	err := json.Unmarshal(bytes, &response)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response on, raw json:\n%v\n[ERROR]: %w", data, err)
-	}
-	if response.Choices == nil || len(response.Choices) == 0 {
-		err = json.Unmarshal(bytes, &errMsg)
-		if err != nil {
-			return nil, fmt.Errorf("there is an error in AI service (CHECK TOKENS IF NOT SURE)\nfailed to unmarshal answer on: %v\n[ERROR]: %w", data, err)
+	err := json.Unmarshal([]byte(data), &response)
+	if err == nil && len(response.Choices) > 0 {
+		var text []string
+		for _, choice := range response.Choices {
+			if choice.Message.Content != "" {
+				text = append(text, choice.Message.Content)
+			}
 		}
-
-		text = append(text, strconv.Itoa(errMsg.Error.Code), errMsg.Error.Message)
-		return text, nil // упрощённо
+		text = append(text, fmt.Sprintf("потрачено %d токенов", response.Usage.TotalTokens))
+		return text, nil
 	}
 
-	for _, k := range response.Choices {
-		text = append(text, k.Message.Content, fmt.Sprintf("потрачено %d токенов", response.Usage.TotalTokens))
+	// Попытка распарсить ошибку
+	if err = json.Unmarshal([]byte(data), &errMsg); err != nil {
+		return nil, fmt.Errorf("не удалось распарсить ответ:\n%v\n[ОШИБКА]: %w", data, err)
 	}
-
-	return text, nil
+	return []string{"Закончились токены! Попробуйте завтра"}, nil
 }
 
 // truncate обрезает строку до maxRunes

@@ -1,19 +1,18 @@
 package models
 
 type ErrorR1Message struct {
-	Error struct {
-		Message  string `json:"message"`
-		Code     int    `json:"code"`
-		Metadata struct {
-			Headers struct {
-				XRateLimitLimit     string `json:"X-RateLimit-Limit"`
-				XRateLimitRemaining string `json:"X-RateLimit-Remaining"`
-				XRateLimitReset     string `json:"X-RateLimit-Reset"`
-			} `json:"headers"`
-			ProviderName interface{} `json:"provider_name"`
-		} `json:"metadata"`
-	} `json:"error"`
-	UserId string `json:"user_id"`
+	Message  string `json:"message"`
+	Code     int    `json:"code"`
+	Metadata struct {
+		Headers      RateLimitHeaders `json:"headers"`
+		ProviderName interface{}      `json:"provider_name"`
+	} `json:"metadata"`
+}
+
+type RateLimitHeaders struct {
+	XRateLimitLimit     string `json:"X-RateLimit-Limit"`
+	XRateLimitRemaining string `json:"X-RateLimit-Remaining"`
+	XRateLimitReset     string `json:"X-RateLimit-Reset"`
 }
 
 type CompletionResponse struct {
