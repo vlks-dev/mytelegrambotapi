@@ -10,6 +10,10 @@ import (
 	"time"
 )
 
+type Storage interface {
+	Save(ctx context.Context, msg *models.Message) error
+}
+
 type BotStorage struct {
 	pool   *pgxpool.Pool
 	config *config.Config

@@ -1,9 +1,12 @@
-package bot
+package tg_bot_api
 
 import (
 	"context"
 	"encoding/json"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/go-telegram/bot"
+	"github.com/mytelegrambot/deepseek"
+	"github.com/mytelegrambot/storage"
 
 	"github.com/mytelegrambot/config"
 	"github.com/mytelegrambot/models"
@@ -82,8 +85,8 @@ func Test_parseChoices(t *testing.T) {
 func TestBot_GetUpdates(t *testing.T) {
 	type fields struct {
 		api     *tgbotapi.BotAPI
-		storage Storage
-		r1      R1Client
+		storage storage.Storage
+		r1      deepseek.R1
 	}
 	type args struct {
 		ctx context.Context
@@ -113,8 +116,8 @@ func TestBot_GetUpdates(t *testing.T) {
 func TestBot_processIncoming(t *testing.T) {
 	type fields struct {
 		api     *tgbotapi.BotAPI
-		storage Storage
-		r1      R1Client
+		storage storage.Storage
+		r1      deepseek.R1
 	}
 	type args struct {
 		ctx context.Context
@@ -145,8 +148,8 @@ func TestBot_processIncoming(t *testing.T) {
 func TestBot_saveMessage(t *testing.T) {
 	type fields struct {
 		api     *tgbotapi.BotAPI
-		storage Storage
-		r1      R1Client
+		storage storage.Storage
+		r1      deepseek.R1
 	}
 	type args struct {
 		ctx context.Context
@@ -177,8 +180,8 @@ func TestBot_saveMessage(t *testing.T) {
 func TestBot_sendAnswer(t *testing.T) {
 	type fields struct {
 		api     *tgbotapi.BotAPI
-		storage Storage
-		r1      R1Client
+		storage storage.Storage
+		r1      deepseek.R1
 	}
 	type args struct {
 		chatID int64
@@ -215,8 +218,9 @@ func TestBot_sendAnswer(t *testing.T) {
 func TestNewBot(t *testing.T) {
 	type args struct {
 		config  *config.Config
-		storage Storage
-		r1      R1Client
+		tgbot   *bot.Bot
+		storage storage.Storage
+		r1      deepseek.R1
 	}
 	tests := []struct {
 		name    string
@@ -228,7 +232,7 @@ func TestNewBot(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := NewBot(tt.args.config, tt.args.storage, tt.args.r1)
+			got, err := NewBot(tt.args.config, tt.args.tgbot, tt.args.storage, tt.args.r1)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewBot() error = %v, wantErr %v", err, tt.wantErr)
 				return

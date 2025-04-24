@@ -3,7 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/mytelegrambot/bot"
+	tg_bot "github.com/mytelegrambot/bot/tg-bot"
+	tg_bot_api "github.com/mytelegrambot/bot/tg-bot-api"
 	"github.com/mytelegrambot/config"
 	"github.com/mytelegrambot/database"
 	"github.com/mytelegrambot/deepseek"
@@ -30,6 +31,11 @@ func main() {
 		log.Fatal(err)
 	}
 
+	tgBot, err := tg_bot.NewBot(botCfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	r1 := deepseek.NewR1(botCfg)
 
 	pool, err := database.GetPool(ctx, botCfg)
@@ -40,7 +46,7 @@ func main() {
 
 	botStorage := storage.NewBotStorage(pool, botCfg)
 
-	botApi, err := bot.NewBot(botCfg, botStorage, r1)
+	botApi, err := tg_bot_api.NewBot(botCfg, tgBot.Bot, botStorage, r1)
 	if err != nil {
 		log.Fatal(err)
 	}

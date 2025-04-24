@@ -1,4 +1,4 @@
-package bot
+package tg_bot_api
 
 import (
 	"context"
@@ -6,19 +6,23 @@ import (
 	"errors"
 	"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/go-telegram/bot"
 	"github.com/mytelegrambot/config"
+	"github.com/mytelegrambot/deepseek"
 	"github.com/mytelegrambot/models"
+	"github.com/mytelegrambot/storage"
 	"log"
 	"strconv"
 )
 
 type Bot struct {
 	api     *tgbotapi.BotAPI
-	storage Storage
-	r1      R1Client
+	tgBot   *bot.Bot
+	storage storage.Storage
+	r1      deepseek.R1
 }
 
-func NewBot(config *config.Config, storage Storage, r1 R1Client) (*Bot, error) {
+func NewBot(config *config.Config, tgBot *bot.Bot, storage storage.Storage, r1 deepseek.R1) (*Bot, error) {
 	botAPI, err := tgbotapi.NewBotAPI(config.Token)
 	if err != nil {
 		return nil, fmt.Errorf("parsing telegram bot token err: %v", err)
@@ -36,16 +40,9 @@ func NewBot(config *config.Config, storage Storage, r1 R1Client) (*Bot, error) {
 	return &Bot{
 		storage: storage,
 		r1:      r1,
+		tgBot:   tgBot,
 		api:     botAPI,
 	}, nil
-}
-
-type Storage interface {
-	Save(ctx context.Context, msg *models.Message) error
-}
-
-type R1Client interface {
-	AnswerQuestion(ctx context.Context, question string) (string, error)
 }
 
 // GetUpdates запускает цикл получения апдейтов и делегирует их обработку
@@ -54,31 +51,38 @@ func (b *Bot) GetUpdates(ctx context.Context) error {
 	u.Timeout = 25
 	updates := b.api.GetUpdatesChan(u)
 
-	commands, err := b.api.GetMyCommands()
-	if err != nil {
-		return fmt.Errorf("get commands: %w", err)
-	}
-	if len(commands) == 0 {
-		log.Printf("no commands found for: @%v", b.api.Self.UserName)
-	}
-
-	log.Printf("can use next commands: %v", commands)
-
 	for {
 		select {
 		case upd, ok := <-updates:
 			if !ok {
+				log.Println("update channel closed")
 				return nil // канал закрылся
 			}
 			if upd.Message == nil {
 				continue
 			}
+			if upd.Message.IsCommand() {
+				commands, getCmdErr := b.api.GetMyCommands()
+				if getCmdErr != nil {
+					return fmt.Errorf("get commands: %w", getCmdErr)
+				}
+				if len(commands) == 0 {
+					log.Printf("no commands found for: @%v", b.api.Self.UserName)
+					_, err := b.sendAnswer(upd.Message.Chat.ID, fmt.Sprintf("нет доступных команд: @%v", b.api.Self.UserName))
+					if err != nil {
+						return fmt.Errorf("send answer err: %w", err)
+					}
+					break
+				}
+
+				log.Printf("can use next commands: %v", commands)
+			}
 			if err := b.processIncoming(ctx, upd.Message); err != nil {
-				return err
+				return fmt.Errorf("processing update: %w", err)
 			}
 
 		case <-ctx.Done():
-			log.Printf("Bot stopped: %v", ctx.Err())
+			log.Printf("bot stopped: %v", ctx.Err())
 			return ctx.Err()
 		}
 	}
@@ -91,6 +95,7 @@ func (b *Bot) processIncoming(ctx context.Context, msg *tgbotapi.Message) error 
 		raw string
 		err error
 	)
+
 	text := truncate(msg.Text, 200)
 	log.Printf("[%s] %s", msg.From.UserName, text+"...")
 
@@ -106,12 +111,13 @@ func (b *Bot) processIncoming(ctx context.Context, msg *tgbotapi.Message) error 
 		return fmt.Errorf("save incoming: %w", err)
 	}
 
+	mockID, sendMockErr := b.sendMock(msg.Chat.ID)
+	if sendMockErr != nil {
+		log.Printf("sendMockErr: %v", sendMockErr)
+	}
+
 	// Получаем ответ от AI
 	for attempt := 0; attempt <= maxRetries; attempt++ {
-		sendMockErr := b.sendMock(msg.Chat.ID, attempt)
-		if sendMockErr != nil {
-			log.Printf("sendMockErr: %v", sendMockErr)
-		}
 		raw, err = b.r1.AnswerQuestion(ctx, msg.Text)
 		if err == nil {
 			// получили ответ
@@ -134,6 +140,11 @@ func (b *Bot) processIncoming(ctx context.Context, msg *tgbotapi.Message) error 
 
 		// любая другая ошибка, вылетаем
 		return fmt.Errorf("AI error: %w", err)
+	}
+
+	err = b.deleteMock(ctx, msg.Chat.ID, mockID)
+	if err != nil {
+		return fmt.Errorf("delete mock: %w", err)
 	}
 
 	// Парсим и отправляем ответы
@@ -204,16 +215,22 @@ func parseChoices(data string) ([]string, error) {
 	return []string{"Закончились токены! Попробуйте завтра"}, nil
 }
 
-func (b *Bot) sendMock(chatID int64, attempt int) error {
-	_, err := b.sendAnswer(chatID, fmt.Sprintf("Ваш ответ генерируется №%d, подождите!", attempt))
+func (b *Bot) sendMock(chatID int64) (int, error) {
+	mock, err := b.sendAnswer(chatID, fmt.Sprintf("Ваш ответ генерируется, подождите!\n@%v", b.api.Self.UserName))
 	if err != nil {
-		return err
+		return 0, fmt.Errorf("send mock response err: %w", err)
 	}
-	return nil
+	return mock.MessageID, nil
 }
 
-func (b *Bot) deleteMock(chatID int64) error {
-	// TODO: use original tg api
+func (b *Bot) deleteMock(ctx context.Context, chatID int64, messageID int) error {
+	_, err := b.tgBot.DeleteMessage(ctx, &bot.DeleteMessageParams{
+		ChatID:    chatID,
+		MessageID: messageID,
+	})
+	if err != nil {
+		return fmt.Errorf("delete mock message err: %w", err)
+	}
 	return nil
 }
 

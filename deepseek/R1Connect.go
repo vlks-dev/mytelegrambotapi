@@ -10,6 +10,10 @@ import (
 	"time"
 )
 
+type R1 interface {
+	AnswerQuestion(ctx context.Context, question string) (string, error)
+}
+
 type R1Client struct {
 	client openai.Client
 }
