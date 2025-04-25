@@ -3,11 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
-	tg_bot "github.com/mytelegrambot/bot/tg-bot"
-	tg_bot_api "github.com/mytelegrambot/bot/tg-bot-api"
+	"github.com/mytelegrambot/bot"
 	"github.com/mytelegrambot/config"
 	"github.com/mytelegrambot/database"
 	"github.com/mytelegrambot/deepseek"
+	"github.com/mytelegrambot/service"
 	"github.com/mytelegrambot/storage"
 	"log"
 	"os"
@@ -31,7 +31,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	tgBot, err := tg_bot.NewBot(botCfg)
+	b, err := bot.NewBot(botCfg)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -46,13 +46,10 @@ func main() {
 
 	botStorage := storage.NewBotStorage(pool, botCfg)
 
-	botApi, err := tg_bot_api.NewBot(botCfg, tgBot.Bot, botStorage, r1)
-	if err != nil {
-		log.Fatal(err)
-	}
+	newService := service.NewService(botStorage, r1, b)
 
 	errCh := make(chan error)
-	go func() { errCh <- botApi.GetUpdates(ctx) }()
+	go func() { errCh <- newService.SetBot(ctx) }()
 	select {
 	case err = <-errCh:
 		log.Fatal(err)

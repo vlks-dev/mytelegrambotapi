@@ -1,12 +1,19 @@
 package models
 
-import "time"
+import (
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"time"
+)
 
 type Message struct {
+	ChatID       int64
 	MessageID    int       `json:"message_id"`
-	FromID       string    `json:"from_id"`
+	FromID       int64     `json:"from_id"`
 	FromUsername string    `json:"from_username"`
 	Text         string    `json:"text"`
-	Location     string    `json:"location"`
 	Timestamp    time.Time `json:"time_stamp"`
+}
+
+type Updates struct {
+	tgbotapi.UpdatesChannel
 }
