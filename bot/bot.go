@@ -1,4 +1,4 @@
-package tg_bot_api
+package bot
 
 import (
 	"context"
@@ -15,11 +15,14 @@ import (
 	"strconv"
 )
 
+type BotAPI interface {
+	GetUpdates(ctx context.Context) error
+	SendAnswer(chatID int64, text string) (*tgbotapi.Message, error)
+}
+
 type Bot struct {
-	api     *tgbotapi.BotAPI
-	tgBot   *bot.Bot
-	storage storage.Storage
-	r1      deepseek.R1
+	api   *tgbotapi.BotAPI
+	tgBot *bot.Bot
 }
 
 func NewBot(config *config.Config, tgBot *bot.Bot, storage storage.Storage, r1 deepseek.R1) (*Bot, error) {
@@ -38,10 +41,8 @@ func NewBot(config *config.Config, tgBot *bot.Bot, storage storage.Storage, r1 d
 	}
 
 	return &Bot{
-		storage: storage,
-		r1:      r1,
-		tgBot:   tgBot,
-		api:     botAPI,
+		tgBot: tgBot,
+		api:   botAPI,
 	}, nil
 }
 
@@ -68,7 +69,7 @@ func (b *Bot) GetUpdates(ctx context.Context) error {
 				}
 				if len(commands) == 0 {
 					log.Printf("no commands found for: @%v", b.api.Self.UserName)
-					_, err := b.sendAnswer(upd.Message.Chat.ID, fmt.Sprintf("нет доступных команд: @%v", b.api.Self.UserName))
+					_, err := b.SendAnswer(upd.Message.Chat.ID, fmt.Sprintf("нет доступных команд: @%v", b.api.Self.UserName))
 					if err != nil {
 						return fmt.Errorf("send answer err: %w", err)
 					}
@@ -131,7 +132,7 @@ func (b *Bot) processIncoming(ctx context.Context, msg *tgbotapi.Message) error 
 				continue
 			}
 			// все попытки исчерпаны
-			if _, sendErr := b.sendAnswer(msg.Chat.ID,
+			if _, sendErr := b.SendAnswer(msg.Chat.ID,
 				"Время ожидания вышло, попробуем ещё раз?"); sendErr != nil {
 				return fmt.Errorf("send timeout notice failed: %w", sendErr)
 			}
@@ -154,7 +155,7 @@ func (b *Bot) processIncoming(ctx context.Context, msg *tgbotapi.Message) error 
 	}
 
 	for _, content := range choices {
-		sent, err := b.sendAnswer(msg.Chat.ID, content)
+		sent, err := b.SendAnswer(msg.Chat.ID, content)
 		if err != nil {
 			return fmt.Errorf("send answer: %w", err)
 		}
@@ -175,13 +176,13 @@ func (b *Bot) processIncoming(ctx context.Context, msg *tgbotapi.Message) error 
 	return nil
 }
 
-// saveMessage сохраняет сообщение в хранилище
+/*// saveMessage сохраняет сообщение в хранилище
 func (b *Bot) saveMessage(ctx context.Context, m *models.Message) error {
 	return b.storage.Save(ctx, m)
-}
+}*/
 
-// sendAnswer отправляет текст в чат и возвращает отправленное сообщение
-func (b *Bot) sendAnswer(chatID int64, text string) (*tgbotapi.Message, error) {
+// SendAnswer отправляет текст в чат и возвращает отправленное сообщение
+func (b *Bot) SendAnswer(chatID int64, text string) (*tgbotapi.Message, error) {
 	msg := tgbotapi.NewMessage(chatID, text)
 	message, err := b.api.Send(msg)
 	if err != nil {
@@ -216,7 +217,7 @@ func parseChoices(data string) ([]string, error) {
 }
 
 func (b *Bot) sendMock(chatID int64) (int, error) {
-	mock, err := b.sendAnswer(chatID, fmt.Sprintf("Ваш ответ генерируется, подождите!\n@%v", b.api.Self.UserName))
+	mock, err := b.SendAnswer(chatID, fmt.Sprintf("Ваш ответ генерируется, подождите!\n@%v", b.api.Self.UserName))
 	if err != nil {
 		return 0, fmt.Errorf("send mock response err: %w", err)
 	}
