@@ -1,3 +1,4 @@
 .env
+promtail/config.yaml
 .idea
 go.sum

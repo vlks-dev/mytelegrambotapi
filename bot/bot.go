@@ -19,17 +19,6 @@ type BotAPI interface {
 	DeleteMessage(ctx context.Context, chatID int64, msgID int) error
 }
 
-func (b *Bot) DeleteMessage(ctx context.Context, chatID int64, msgID int) error {
-	_, err := b.tgBot.DeleteMessage(ctx, &bot.DeleteMessageParams{
-		ChatID:    chatID,
-		MessageID: msgID,
-	})
-	if err != nil {
-		return fmt.Errorf("tg bot delete message (%v) from chat (%v): %w", msgID, chatID, err)
-	}
-	return nil
-}
-
 type Bot struct {
 	api   *tgbotapi.BotAPI
 	tgBot *bot.Bot
@@ -75,6 +64,7 @@ func (b *Bot) GetMyCommands() ([]tgbotapi.BotCommand, error) {
 	if err != nil {
 		return nil, fmt.Errorf("get commands for %v: %w", b.api.Self.UserName, err)
 	}
+
 	log.Printf("got commands for %v", b.api.Self.UserName)
 	return commands, nil
 }
@@ -84,11 +74,12 @@ func (b *Bot) GetUpdates(ctx context.Context) (<-chan tgbotapi.Update, error) {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 25
 	updates := b.api.GetUpdatesChan(u)
+
 	return updates, nil
 }
 
 func (b *Bot) HandleCommand(ctx context.Context, msg *tgbotapi.Message, msgIDs []int) (*tgbotapi.Message, error) {
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	chatID := msg.Chat.ID
@@ -97,7 +88,8 @@ func (b *Bot) HandleCommand(ctx context.Context, msg *tgbotapi.Message, msgIDs [
 
 	switch msg.Command() {
 	case "help":
-		answer, err := b.SendMessage(chatID, "Я Простой чат-бот на основе Openai API, написанный на Golang, с используемой моделью - DeepSeek V3")
+		commands, _ := b.api.GetMyCommands()
+		answer, err := b.SendMessage(chatID, fmt.Sprintf("Я Простой чат-бот на основе Openai API, написанный на Golang, с используемой моделью - DeepSeek V3. Команды для бота:  %v", commands))
 		if err != nil {
 			return nil, fmt.Errorf("send answer error: %w", err)
 		}
@@ -115,25 +107,24 @@ func (b *Bot) HandleCommand(ctx context.Context, msg *tgbotapi.Message, msgIDs [
 		}
 	}
 
-	log.Printf("%v command in %v-chat", msg.Command(), chatID)
-
 	deadline, ok := ctx.Deadline()
 	if !ok {
 		log.Println("deadline not set in ctx")
+	} else {
+		log.Printf("%v command in %v chat, time left: %v", msg.Command(), chatID, time.Until(deadline))
 	}
 
-	answer, err := b.SendMessage(chatID, fmt.Sprintf("Команда %v выполнена, осталось времени: %v ", msg.Text, time.Until(deadline)))
-	if err != nil {
-		return nil, fmt.Errorf("send answer (%v) err: %w", answer.Text, err)
-	}
-
-	return answer, nil
+	return nil, nil
 }
 
 func (b *Bot) DeleteMessages(ctx context.Context, chatID int64, messageIDs []int) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
+	if messageIDs == nil {
+		log.Printf("no message IDs provided from %v chat", chatID)
+		return nil
+	}
 	_, err := b.tgBot.DeleteMessages(ctx, &bot.DeleteMessagesParams{
 		ChatID:     chatID,
 		MessageIDs: messageIDs,
@@ -142,6 +133,17 @@ func (b *Bot) DeleteMessages(ctx context.Context, chatID int64, messageIDs []int
 		return fmt.Errorf("delete message err: %w", err)
 	}
 
+	return nil
+}
+
+func (b *Bot) DeleteMessage(ctx context.Context, chatID int64, msgID int) error {
+	_, err := b.tgBot.DeleteMessage(ctx, &bot.DeleteMessageParams{
+		ChatID:    chatID,
+		MessageID: msgID,
+	})
+	if err != nil {
+		return fmt.Errorf("tg bot delete message (%v) from chat (%v): %w", msgID, chatID, err)
+	}
 	return nil
 }
 
@@ -154,5 +156,4 @@ func (b *Bot) SendMessage(chatID int64, text string) (*tgbotapi.Message, error) 
 	}
 
 	return &message, nil
-
 }

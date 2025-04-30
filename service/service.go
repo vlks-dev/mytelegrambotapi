@@ -52,9 +52,9 @@ func (s *Service) SetBot(ctx context.Context) error {
 				if sendMsgErr != nil {
 					return fmt.Errorf("sending main failure message error: %w", sendMsgErr)
 				}
-				err := s.storage.Save(ctx, utils.BotMessageToModel(msgErr))
-				if err != nil {
-					return fmt.Errorf("saving error message: %w", err)
+				saveMsgErr := s.storage.Save(ctx, utils.BotMessageToModel(msgErr))
+				if saveMsgErr != nil {
+					return fmt.Errorf("saving error message: %w", saveMsgErr)
 				}
 				if !errors.Is(err, context.DeadlineExceeded) {
 					return fmt.Errorf("processing message: %w", err)
@@ -85,9 +85,9 @@ func (s *Service) ProcessMessage(ctx context.Context, msg *tgbotapi.Message) err
 	var _ *tgbotapi.Message
 
 	if msg.IsCommand() {
-		err = s.processCommand(ctx, msg)
-		if err != nil {
-			return fmt.Errorf("processing command: %w", err)
+		processCommandErr := s.processCommand(ctx, msg)
+		if processCommandErr != nil {
+			return fmt.Errorf("processing command: %w", processCommandErr)
 		}
 		return nil
 	}
@@ -103,8 +103,8 @@ func (s *Service) ProcessMessage(ctx context.Context, msg *tgbotapi.Message) err
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		err = s.getAiResponse(ctx, msg)
+		// получили ответ
 		if err == nil {
-			// получили ответ
 			break
 		}
 		// если вышел дедлайн, ретраим
@@ -126,9 +126,10 @@ func (s *Service) ProcessMessage(ctx context.Context, msg *tgbotapi.Message) err
 			return fmt.Errorf("timeout after %d retries: %w", maxRetries+1, err)
 		}
 
-		return fmt.Errorf("getting Ai response for (%v): %w", msg.MessageID, err)
 		// любая другая ошибка, вылетаем
+		return fmt.Errorf("getting Ai response for (%v): %w", msg.MessageID, err)
 	}
+
 	if err = s.bot.DeleteMessage(ctx, msg.Chat.ID, mockMsg.MessageID); err != nil {
 		return fmt.Errorf("deleting message: %w", err)
 	}
@@ -136,7 +137,7 @@ func (s *Service) ProcessMessage(ctx context.Context, msg *tgbotapi.Message) err
 	return nil
 }
 
-func (s *Service) ListCommands(ctx context.Context, msg *tgbotapi.Message) ([]string, error) {
+func (s *Service) ListCommands(ctx context.Context) ([]string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -147,24 +148,16 @@ func (s *Service) ListCommands(ctx context.Context, msg *tgbotapi.Message) ([]st
 		return nil, fmt.Errorf("get commands error: %w", err)
 	}
 
-	if len(commands) == 0 {
-		log.Printf("no commands found for @%v", msg.Chat.UserName)
-		answer, err := s.bot.SendMessage(msg.Chat.ID, fmt.Sprintf("Команды для @%v не найдены!", msg.Chat.UserName))
-		if err != nil {
-			return nil, fmt.Errorf("send answer error: %w", err)
-		}
-		err = s.storage.Save(ctx, utils.BotMessageToModel(answer))
-		if err != nil {
-			return nil, fmt.Errorf("saving message (%v) to storage: %w", msg.MessageID, err)
-		}
-		return nil, nil
-	}
-
 	for _, command := range commands {
 		list = append(list, command.Command)
 	}
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		log.Println("handle list of commands from tg bot, deadline is not set")
+	} else {
+		log.Printf("handle list of commands: %v, left: %v", list, time.Until(deadline))
+	}
 
-	log.Printf("can use next commands: %v", list)
 	return list, nil
 }
 
@@ -180,7 +173,10 @@ func (s *Service) getAiResponse(ctx context.Context, msg *tgbotapi.Message) erro
 	}
 
 	for _, choice := range choices {
-
+		if len(choices) == 0 {
+			log.Printf("no response generated for q: %v", msg.MessageID)
+			continue
+		}
 		message, err := s.bot.SendMessage(msg.Chat.ID, choice)
 		if err != nil {
 			return fmt.Errorf("sending answer from AI: %w", err)
@@ -203,18 +199,33 @@ func (s *Service) processCommand(ctx context.Context, msg *tgbotapi.Message) err
 		return nil
 	}
 	for _, command := range commands {
+
 		if command.Command == msg.Command() {
-			msgIDs, err := s.storage.GetMsgIDs(ctx, msg.Chat.ID)
-			if err != nil {
-				return fmt.Errorf("getting msg ids: %w", err)
+			var msgIDs []int
+			if msg.Command() == "restart" {
+				dbIDs, err := s.storage.GetMsgIDs(ctx, msg.Chat.ID)
+				if err != nil {
+					return fmt.Errorf("getting msg ids: %w", err)
+				}
+				msgIDs = dbIDs
 			}
 			handleCommand, err := s.bot.HandleCommand(ctx, msg, msgIDs)
 			if err != nil {
 				return fmt.Errorf("handling command: %w", err)
 			}
-			err = s.storage.Save(ctx, utils.BotMessageToModel(handleCommand))
-			if err != nil {
-				return fmt.Errorf("saving handled command: %w", err)
+			if handleCommand == nil {
+				ok, err := s.storage.MoveToRecover(ctx, msg.Chat.ID)
+				if err != nil {
+					return fmt.Errorf("moving recovery message: %w", err)
+				}
+				if !ok {
+					return nil
+				}
+			} else {
+				err = s.storage.Save(ctx, utils.BotMessageToModel(handleCommand))
+				if err != nil {
+					return fmt.Errorf("saving handled command: %w", err)
+				}
 			}
 		}
 	}

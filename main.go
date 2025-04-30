@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/gin-gonic/gin"
 	"github.com/mytelegrambot/bot"
 	"github.com/mytelegrambot/config"
 	"github.com/mytelegrambot/database"
 	"github.com/mytelegrambot/deepseek"
+	"github.com/mytelegrambot/logger"
 	"github.com/mytelegrambot/service"
 	"github.com/mytelegrambot/storage"
 	"log"
@@ -31,6 +33,14 @@ func main() {
 		log.Fatal(err)
 	}
 
+	sugaredLogger := logger.NewLogger(botCfg, "main")
+	defer sugaredLogger.Sync()
+
+	sugaredLogger.Infoln(
+		"tg bot startup by vlks",
+		"configurated by .env",
+	)
+
 	b, err := bot.NewBot(botCfg)
 	if err != nil {
 		log.Fatal(err)
@@ -48,8 +58,21 @@ func main() {
 
 	newService := service.NewService(botStorage, r1, b)
 
+	router := gin.Default()
+
+	router.GET("/commands", func(c *gin.Context) {
+		commands, err := newService.ListCommands(c)
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+		}
+		c.JSON(200, gin.H{"commands": commands})
+	})
+
 	errCh := make(chan error)
-	go func() { errCh <- newService.SetBot(ctx) }()
+	go func() {
+		errCh <- router.Run(":8080")
+		errCh <- newService.SetBot(ctx)
+	}()
 	select {
 	case err = <-errCh:
 		log.Fatal(err)
