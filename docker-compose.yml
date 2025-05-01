@@ -22,7 +22,7 @@ services:
     image: grafana/promtail
     volumes:
       - ./promtail-config.yml:/etc/promtail/config.yml
-      - ./logs:/var/log/myapp
+      - ./promtail/log:/var/log/myapp
     command: -config.file=/etc/promtail/config.yml
 
 volumes:
