@@ -56,7 +56,7 @@ func main() {
 
 	botStorage := storage.NewBotStorage(pool, botCfg)
 
-	newService := service.NewService(botStorage, r1, b)
+	newService := service.NewService(sugaredLogger, botStorage, r1, b)
 
 	router := gin.Default()
 
@@ -70,7 +70,7 @@ func main() {
 
 	errCh := make(chan error)
 	go func() {
-		errCh <- router.Run(":8080")
+		//errCh <- router.Run(":8080")
 		errCh <- newService.SetBot(ctx)
 	}()
 	select {

@@ -9,18 +9,21 @@ import (
 	"github.com/mytelegrambot/deepseek"
 	"github.com/mytelegrambot/storage"
 	"github.com/mytelegrambot/utils"
+	"go.uber.org/zap"
 	"log"
 	"time"
 )
 
 type Service struct {
+	logger  *zap.SugaredLogger
 	storage storage.Storage
 	r1      deepseek.R1
 	bot     bot.BotAPI
 }
 
-func NewService(storage storage.Storage, r1 deepseek.R1, b bot.BotAPI) *Service {
+func NewService(logger  *zap.SugaredLogger, storage storage.Storage, r1 deepseek.R1, b bot.BotAPI) *Service {
 	return &Service{
+		logger:  logger,
 		storage: storage,
 		r1:      r1,
 		bot:     b,
@@ -47,6 +50,7 @@ func (s *Service) SetBot(ctx context.Context) error {
 			if update.Message == nil {
 				continue
 			}
+			s.logger.Infoln("Get update from telegram bot!")
 			if err = s.ProcessMessage(ctx, update.Message); err != nil {
 				msgErr, sendMsgErr := s.bot.SendMessage(update.Message.Chat.ID, "Не могу обработать Ваше сообщение, попробуйте позднее!")
 				if sendMsgErr != nil {
