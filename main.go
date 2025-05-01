@@ -8,6 +8,7 @@ import (
 	"github.com/mytelegrambot/config"
 	"github.com/mytelegrambot/database"
 	"github.com/mytelegrambot/deepseek"
+	"github.com/mytelegrambot/handlers"
 	"github.com/mytelegrambot/logger"
 	"github.com/mytelegrambot/service"
 	"github.com/mytelegrambot/storage"
@@ -56,28 +57,35 @@ func main() {
 
 	botStorage := storage.NewBotStorage(pool, botCfg)
 
-	newService := service.NewService(botStorage, r1, b)
+	newService := service.NewService(sugaredLogger, botStorage, r1, b)
 
-	router := gin.Default()
+	handler := handlers.NewBotHandler(newService)
 
-	router.GET("/commands", func(c *gin.Context) {
-		commands, err := newService.ListCommands(c)
-		if err != nil {
-			c.JSON(500, gin.H{"error": err.Error()})
-		}
-		c.JSON(200, gin.H{"commands": commands})
-	})
+	router := gin.New()
+	router.Use(gin.Recovery())
+	engine := router.With()
+
+	handler.RegisterRoutes(engine)
 
 	errCh := make(chan error)
+
 	go func() {
+		sugaredLogger.Infow("starting web server", "addr", ":8080")
 		errCh <- router.Run(":8080")
+	}()
+
+	go func() {
+		sugaredLogger.Infow("waiting for incoming bot requests...", "debug", botCfg.BotEnv)
 		errCh <- newService.SetBot(ctx)
 	}()
+
 	select {
 	case err = <-errCh:
 		log.Fatal(err)
 	case <-ctx.Done():
-		// Дополнительные действия при завершении
+		pool.Close()
+		sugaredLogger.Infow("app shutdown complete")
+
 	}
 
 }

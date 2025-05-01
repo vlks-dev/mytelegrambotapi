@@ -9,18 +9,21 @@ import (
 	"github.com/mytelegrambot/deepseek"
 	"github.com/mytelegrambot/storage"
 	"github.com/mytelegrambot/utils"
+	"go.uber.org/zap"
 	"log"
 	"time"
 )
 
 type Service struct {
+	logger  *zap.SugaredLogger
 	storage storage.Storage
 	r1      deepseek.R1
 	bot     bot.BotAPI
 }
 
-func NewService(storage storage.Storage, r1 deepseek.R1, b bot.BotAPI) *Service {
+func NewService(logger *zap.SugaredLogger, storage storage.Storage, r1 deepseek.R1, b bot.BotAPI) *Service {
 	return &Service{
+		logger:  logger,
 		storage: storage,
 		r1:      r1,
 		bot:     b,
@@ -31,7 +34,7 @@ func (s *Service) SetBot(ctx context.Context) error {
 	updates, err := s.bot.GetUpdates(ctx)
 	deadline, ok := ctx.Deadline()
 	if !ok {
-		log.Println("get updates from tg bot, deadline is not set")
+		return errors.New("updates channel closed")
 	}
 	if ok {
 		log.Printf("get updates from tg bot, w/ deadline (left:%v)", time.Until(deadline))
@@ -47,6 +50,7 @@ func (s *Service) SetBot(ctx context.Context) error {
 			if update.Message == nil {
 				continue
 			}
+			s.logger.Infoln("Get update from telegram bot!")
 			if err = s.ProcessMessage(ctx, update.Message); err != nil {
 				msgErr, sendMsgErr := s.bot.SendMessage(update.Message.Chat.ID, "Не могу обработать Ваше сообщение, попробуйте позднее!")
 				if sendMsgErr != nil {
@@ -81,8 +85,6 @@ func (s *Service) ProcessMessage(ctx context.Context, msg *tgbotapi.Message) err
 			err,
 		)
 	}
-
-	var _ *tgbotapi.Message
 
 	if msg.IsCommand() {
 		processCommandErr := s.processCommand(ctx, msg)
@@ -172,11 +174,12 @@ func (s *Service) getAiResponse(ctx context.Context, msg *tgbotapi.Message) erro
 		return fmt.Errorf("parsing answer question: %w", err)
 	}
 
+	if len(choices) == 0 {
+		log.Printf("no response generated for q: %v", msg.MessageID)
+		return nil
+	}
+
 	for _, choice := range choices {
-		if len(choices) == 0 {
-			log.Printf("no response generated for q: %v", msg.MessageID)
-			continue
-		}
 		message, err := s.bot.SendMessage(msg.Chat.ID, choice)
 		if err != nil {
 			return fmt.Errorf("sending answer from AI: %w", err)
@@ -186,6 +189,8 @@ func (s *Service) getAiResponse(ctx context.Context, msg *tgbotapi.Message) erro
 			return fmt.Errorf("saving answer message: %w", err)
 		}
 	}
+
+	log.Printf("AI response sent for msg %v", msg.MessageID)
 	return nil
 }
 
