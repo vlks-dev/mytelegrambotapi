@@ -5,6 +5,7 @@ import (
 	"github.com/joho/godotenv"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -18,11 +19,19 @@ type Config struct {
 	R1Token            string
 	R1ProToken         string
 	BotEnv             bool
+	Logger             Logger
+}
+
+type Logger struct {
+	Development      bool
+	OutputPaths      []string
+	ErrorOutputPaths []string
 }
 
 var (
-	cfg      *Config
-	botDebug bool
+	cfg            *Config
+	botDebug       bool
+	logDevelopment bool
 )
 
 func LoadEnvCfg(source string) (*Config, error) {
@@ -71,6 +80,12 @@ func LoadEnvCfg(source string) (*Config, error) {
 		botDebug = false
 	}
 
+	if os.Getenv("LOG_DEVELOPMENT") == "true" {
+		logDevelopment = true
+	} else {
+		logDevelopment = false
+	}
+
 	cfg = &Config{
 		Token:              os.Getenv("TOKEN"),
 		ConnString:         os.Getenv("CONNECTION_STRING"),
@@ -81,6 +96,11 @@ func LoadEnvCfg(source string) (*Config, error) {
 		R1Token:            os.Getenv("R1_TOKEN"),
 		R1ProToken:         os.Getenv("R1_PRO_TOKEN"),
 		BotEnv:             botDebug,
+		Logger: Logger{
+			Development:      logDevelopment,
+			OutputPaths:      strings.Split(os.Getenv("LOG_OUTPUT_PATHS"), ","),
+			ErrorOutputPaths: strings.Split(os.Getenv("LOG_ERROR_OUTPUT_PATHS"), ","),
+		},
 	}
 	return cfg, nil
 }
