@@ -34,7 +34,7 @@ func (s *Service) SetBot(ctx context.Context) error {
 	updates, err := s.bot.GetUpdates(ctx)
 	deadline, ok := ctx.Deadline()
 	if !ok {
-		log.Println("get updates from tg bot, deadline is not set")
+		return errors.New("updates channel closed")
 	}
 	if ok {
 		log.Printf("get updates from tg bot, w/ deadline (left:%v)", time.Until(deadline))
@@ -85,8 +85,6 @@ func (s *Service) ProcessMessage(ctx context.Context, msg *tgbotapi.Message) err
 			err,
 		)
 	}
-
-	var _ *tgbotapi.Message
 
 	if msg.IsCommand() {
 		processCommandErr := s.processCommand(ctx, msg)
@@ -176,11 +174,12 @@ func (s *Service) getAiResponse(ctx context.Context, msg *tgbotapi.Message) erro
 		return fmt.Errorf("parsing answer question: %w", err)
 	}
 
+	if len(choices) == 0 {
+		log.Printf("no response generated for q: %v", msg.MessageID)
+		return nil
+	}
+
 	for _, choice := range choices {
-		if len(choices) == 0 {
-			log.Printf("no response generated for q: %v", msg.MessageID)
-			continue
-		}
 		message, err := s.bot.SendMessage(msg.Chat.ID, choice)
 		if err != nil {
 			return fmt.Errorf("sending answer from AI: %w", err)
@@ -190,6 +189,8 @@ func (s *Service) getAiResponse(ctx context.Context, msg *tgbotapi.Message) erro
 			return fmt.Errorf("saving answer message: %w", err)
 		}
 	}
+
+	log.Printf("AI response sent for msg %v", msg.MessageID)
 	return nil
 }
 
