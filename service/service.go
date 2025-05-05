@@ -21,7 +21,7 @@ type Service struct {
 	bot     bot.BotAPI
 }
 
-func NewService(logger *zap.SugaredLogger, storage storage.Storage, r1 deepseek.R1, b bot.BotAPI) *Service {
+func NewService(logger  *zap.SugaredLogger, storage storage.Storage, r1 deepseek.R1, b bot.BotAPI) *Service {
 	return &Service{
 		logger:  logger,
 		storage: storage,
