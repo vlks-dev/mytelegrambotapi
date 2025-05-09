@@ -18,6 +18,7 @@ type Config struct {
 	HealthCheckPeriod  time.Duration
 	R1Token            string
 	R1ProToken         string
+	AIApiUrl           string
 	BotEnv             bool
 	Logger             Logger
 }
@@ -95,6 +96,7 @@ func LoadEnvCfg(source string) (*Config, error) {
 		HealthCheckPeriod:  time.Duration(parsedHealthCheckPeriod),
 		R1Token:            os.Getenv("R1_TOKEN"),
 		R1ProToken:         os.Getenv("R1_PRO_TOKEN"),
+		AIApiUrl:           os.Getenv("AI_API_URL"),
 		BotEnv:             botDebug,
 		Logger: Logger{
 			Development:      logDevelopment,

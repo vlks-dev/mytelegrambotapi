@@ -3,12 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/gin-gonic/gin"
 	"github.com/mytelegrambot/bot"
 	"github.com/mytelegrambot/config"
 	"github.com/mytelegrambot/database"
 	"github.com/mytelegrambot/deepseek"
-	"github.com/mytelegrambot/handlers"
 	"github.com/mytelegrambot/logger"
 	"github.com/mytelegrambot/service"
 	"github.com/mytelegrambot/storage"
@@ -34,45 +32,34 @@ func main() {
 		log.Fatal(err)
 	}
 
-	sugaredLogger := logger.NewLogger(botCfg, "main")
-	defer sugaredLogger.Sync()
+	sugaredLogger := logger.NewLogger(botCfg)
+	sugaredLogger.Infoln("tg bot startup by vlks", "configurated by .env")
 
-	sugaredLogger.Infoln(
-		"tg bot startup by vlks",
-		"configurated by .env",
-	)
-
-	b, err := bot.NewBot(botCfg)
+	b, err := bot.NewBot(botCfg, sugaredLogger)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	r1 := deepseek.NewR1(botCfg)
+	r1 := deepseek.NewR1(botCfg, sugaredLogger)
 
 	pool, err := database.GetPool(ctx, botCfg)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer pool.Close()
 
 	botStorage := storage.NewBotStorage(pool, botCfg)
 
 	newService := service.NewService(sugaredLogger, botStorage, r1, b)
 
-	handler := handlers.NewBotHandler(newService)
+	/*	handler := handlers.NewBotHandler(newService)
 
-	router := gin.New()
-	router.Use(gin.Recovery())
-	engine := router.With()
+		router := gin.New()
+		router.Use(gin.Recovery())
+		engine := router.With()
 
-	handler.RegisterRoutes(engine)
+		handler.RegisterRoutes(engine)*/
 
 	errCh := make(chan error)
-
-	go func() {
-		sugaredLogger.Infow("starting web server", "addr", ":8080")
-		errCh <- router.Run(":8080")
-	}()
 
 	go func() {
 		sugaredLogger.Infow("waiting for incoming bot requests...", "debug", botCfg.BotEnv)
@@ -84,8 +71,8 @@ func main() {
 		log.Fatal(err)
 	case <-ctx.Done():
 		pool.Close()
+		sugaredLogger.Sync()
 		sugaredLogger.Infow("app shutdown complete")
-
 	}
 
 }

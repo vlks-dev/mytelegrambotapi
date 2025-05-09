@@ -1,12 +1,7 @@
 package handlers
 
-import (
-	"github.com/gin-gonic/gin"
-	"github.com/mytelegrambot/service"
-)
-
-type BotHandler struct {
-	service *service.Service
+/*type BotHandler struct {
+	service service.BotService
 }
 
 func NewBotHandler(service *service.Service) *BotHandler {
@@ -14,7 +9,7 @@ func NewBotHandler(service *service.Service) *BotHandler {
 }
 
 func (h *BotHandler) Commands(c *gin.Context) {
-	commands, err := h.service.ListCommands(c)
+	commands, err := h.service.ListCommands(c.Request.Context())
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 	}
@@ -27,3 +22,4 @@ func (h *BotHandler) RegisterRoutes(router *gin.Engine) {
 		botGroup.GET("/commands", h.Commands)
 	}
 }
+*/
