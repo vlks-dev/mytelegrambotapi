@@ -5,12 +5,13 @@ import (
 	"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/go-telegram/bot"
+	"github.com/mytelegrambot/bot/buttons"
 	"github.com/mytelegrambot/config"
-	"log"
+	"go.uber.org/zap"
 	"time"
 )
 
-type BotAPI interface {
+type AIBotAPI interface {
 	GetUpdates(ctx context.Context) (<-chan tgbotapi.Update, error)
 	SendMessage(chatID int64, text string) (*tgbotapi.Message, error)
 	DeleteMessages(ctx context.Context, chatID int64, messageIDs []int) error
@@ -20,11 +21,14 @@ type BotAPI interface {
 }
 
 type Bot struct {
-	api   *tgbotapi.BotAPI
-	tgBot *bot.Bot
+	logger *zap.SugaredLogger
+	api    *tgbotapi.BotAPI
+	tgBot  *bot.Bot
 }
 
-func NewBot(config *config.Config) (*Bot, error) {
+func NewBot(config *config.Config, logger *zap.SugaredLogger) (*Bot, error) {
+	log := logger.Named("bot")
+
 	botAPI, err := tgbotapi.NewBotAPI(config.Token)
 	if err != nil {
 		return nil, fmt.Errorf("parsing telegram bot token err: %v", err)
@@ -34,10 +38,10 @@ func NewBot(config *config.Config) (*Bot, error) {
 
 	switch {
 	case botAPI.Debug == true:
-		log.Printf("authorized on account @%v in debug mode! (%v)\n",
+		log.Debugf("authorized on account @%v in debug mode! (%v)\n",
 			botAPI.Self.UserName, botAPI.Self.FirstName)
 	case botAPI.Debug == false:
-		log.Printf("authorized on account @%v! (%v)\n", botAPI.Self.UserName, botAPI.Self.FirstName)
+		log.Infof("authorized on account @%v! (%v)\n", botAPI.Self.UserName, botAPI.Self.FirstName)
 	}
 
 	var opts []bot.Option
@@ -54,8 +58,9 @@ func NewBot(config *config.Config) (*Bot, error) {
 	}
 
 	return &Bot{
-		tgBot: b,
-		api:   botAPI,
+		logger: log,
+		tgBot:  b,
+		api:    botAPI,
 	}, nil
 }
 
@@ -65,11 +70,13 @@ func (b *Bot) GetMyCommands() ([]tgbotapi.BotCommand, error) {
 		return nil, fmt.Errorf("get commands for %v: %w", b.api.Self.UserName, err)
 	}
 
-	log.Printf("got commands for %v", b.api.Self.UserName)
+	keyboard := buttons.InitKeyboard()
+
+	b.logger.Debugf("got commands for %v, startup keyboard buttons: %v", b.api.Self.UserName, keyboard.Keyboard)
 	return commands, nil
 }
 
-// GetUpdates запускает цикл получения апдейтов и делегирует их обработку
+// GetUpdates цикл обновлений с обработкой
 func (b *Bot) GetUpdates(ctx context.Context) (<-chan tgbotapi.Update, error) {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 25
@@ -84,34 +91,29 @@ func (b *Bot) HandleCommand(ctx context.Context, msg *tgbotapi.Message, msgIDs [
 
 	chatID := msg.Chat.ID
 
-	log.Printf("входящая команда: %v, чат (%v)", msg.Text, chatID)
+	b.logger.Debugf("входящая команда: %v, чат (%v)", msg.Text, chatID)
 
 	switch msg.Command() {
 	case "help":
-		commands, _ := b.api.GetMyCommands()
+		commands, _ := b.GetMyCommands()
 		answer, err := b.SendMessage(chatID, fmt.Sprintf("Я Простой чат-бот на основе Openai API, написанный на Golang, с используемой моделью - DeepSeek V3. Команды для бота:  %v", commands))
 		if err != nil {
 			return nil, fmt.Errorf("send answer error: %w", err)
 		}
 		return answer, nil
 	case "start":
-		answer, err := b.SendMessage(chatID, fmt.Sprint("Привет! Задавай мне вопросы, а постараюсь ответить на них правильно! (на базе DeepSeek v3)"))
+		message := tgbotapi.NewMessage(chatID, fmt.Sprint("Привет! Задавай мне вопросы, а постараюсь ответить на них правильно! (на базе DeepSeek v3)"))
+		message.ReplyMarkup = buttons.InitKeyboard()
+		send, err := b.api.Send(message)
 		if err != nil {
 			return nil, fmt.Errorf("send start command mock, chat (%v) error: %w", msg.Chat.ID, err)
 		}
-		return answer, nil
+		return &send, nil
 	case "restart":
 		err := b.DeleteMessages(ctx, chatID, msgIDs)
 		if err != nil {
 			return nil, fmt.Errorf("%v command, chat (%v) error: %w", msg.Command(), msg.Chat.ID, err)
 		}
-	}
-
-	deadline, ok := ctx.Deadline()
-	if !ok {
-		log.Println("deadline not set in ctx")
-	} else {
-		log.Printf("%v command in %v chat, time left: %v", msg.Command(), chatID, time.Until(deadline))
 	}
 
 	return nil, nil
@@ -122,7 +124,7 @@ func (b *Bot) DeleteMessages(ctx context.Context, chatID int64, messageIDs []int
 	defer cancel()
 
 	if messageIDs == nil {
-		log.Printf("no message IDs provided from %v chat", chatID)
+		b.logger.Warnf("no message IDs provided from %v chat", chatID)
 		return nil
 	}
 	_, err := b.tgBot.DeleteMessages(ctx, &bot.DeleteMessagesParams{

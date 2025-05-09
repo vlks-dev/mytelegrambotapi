@@ -14,7 +14,7 @@ func TestNewService(t *testing.T) {
 	type args struct {
 		storage storage.Storage
 		r1      deepseek.R1
-		b       bot.BotAPI
+		b       bot.AIBotAPI
 	}
 	tests := []struct {
 		name string
@@ -36,7 +36,7 @@ func TestService_ListCommands(t *testing.T) {
 	type fields struct {
 		storage storage.Storage
 		r1      deepseek.R1
-		bot     bot.BotAPI
+		bot     bot.AIBotAPI
 	}
 	type args struct {
 		ctx context.Context
@@ -74,7 +74,7 @@ func TestService_ProcessMessage(t *testing.T) {
 	type fields struct {
 		storage storage.Storage
 		r1      deepseek.R1
-		bot     bot.BotAPI
+		bot     bot.AIBotAPI
 	}
 	type args struct {
 		ctx context.Context
@@ -106,7 +106,7 @@ func TestService_SetBot(t *testing.T) {
 	type fields struct {
 		storage storage.Storage
 		r1      deepseek.R1
-		bot     bot.BotAPI
+		bot     bot.AIBotAPI
 	}
 	type args struct {
 		ctx context.Context
@@ -137,7 +137,7 @@ func TestService_getAiResponse(t *testing.T) {
 	type fields struct {
 		storage storage.Storage
 		r1      deepseek.R1
-		bot     bot.BotAPI
+		bot     bot.AIBotAPI
 	}
 	type args struct {
 		ctx context.Context
@@ -169,7 +169,7 @@ func TestService_processCommand(t *testing.T) {
 	type fields struct {
 		storage storage.Storage
 		r1      deepseek.R1
-		bot     bot.BotAPI
+		bot     bot.AIBotAPI
 	}
 	type args struct {
 		ctx context.Context
