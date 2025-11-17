@@ -1,4 +1,4 @@
-module github.com/mytelegrambot
+module github.com/vlks-dev/mytelegrambotapi
 
 go 1.24.1
 

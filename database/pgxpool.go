@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/mytelegrambot/config"
+	"github.com/vlks-dev/mytelegrambotapi/config"
 	"go.uber.org/zap"
 	"time"
 )

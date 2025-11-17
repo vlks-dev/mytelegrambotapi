@@ -1,11 +1,12 @@
 package logger
 
 import (
-	"github.com/mytelegrambot/config"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"log"
 	"os"
+
+	"github.com/vlks-dev/mytelegrambotapi/config"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type ZapLogger struct {

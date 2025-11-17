@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/mytelegrambot/models"
+	"github.com/vlks-dev/mytelegrambotapi/internal/domain"
 	"time"
 )
 
@@ -16,9 +16,9 @@ func Truncate(s string, maxRunes int) string {
 	return string(runes[:maxRunes])
 }
 
-func BotMessageToModel(message *tgbotapi.Message) *models.Message {
+func BotMessageToModel(message *tgbotapi.Message) *domain.Message {
 	const maxRunes = 200
-	return &models.Message{
+	return &domain.Message{
 		ChatID:       message.Chat.ID,
 		MessageID:    message.MessageID,
 		FromID:       message.From.ID,
@@ -30,8 +30,8 @@ func BotMessageToModel(message *tgbotapi.Message) *models.Message {
 
 // ParseChoices разбирает JSON-ответ AI и возвращает список текстов
 func ParseChoices(data string) ([]string, error) {
-	var response models.CompletionResponse
-	var errMsg models.ErrorR1Message
+	var response domain.CompletionResponse
+	var errMsg domain.ErrorR1Message
 
 	err := json.Unmarshal([]byte(data), &response)
 	if err == nil && len(response.Choices) > 0 {

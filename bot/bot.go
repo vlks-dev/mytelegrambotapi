@@ -5,8 +5,8 @@ import (
 	"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/go-telegram/bot"
-	"github.com/mytelegrambot/bot/buttons"
-	"github.com/mytelegrambot/config"
+	"github.com/vlks-dev/mytelegrambotapi/bot/buttons"
+	"github.com/vlks-dev/mytelegrambotapi/config"
 	"go.uber.org/zap"
 	"time"
 )
@@ -37,10 +37,10 @@ func NewBot(config *config.Config, logger *zap.SugaredLogger) (*Bot, error) {
 	botAPI.Debug = config.BotEnv
 
 	switch {
-	case botAPI.Debug == true:
+	case botAPI.Debug == false:
 		log.Debugf("authorized on account @%v in debug mode! (%v)\n",
 			botAPI.Self.UserName, botAPI.Self.FirstName)
-	case botAPI.Debug == false:
+	case botAPI.Debug == true:
 		log.Infof("authorized on account @%v! (%v)\n", botAPI.Self.UserName, botAPI.Self.FirstName)
 	}
 
@@ -104,7 +104,9 @@ func (b *Bot) HandleCommand(ctx context.Context, msg *tgbotapi.Message, msgIDs [
 	case "start":
 		message := tgbotapi.NewMessage(chatID, fmt.Sprint("Привет! Задавай мне вопросы, а постараюсь ответить на них правильно! (на базе DeepSeek v3)"))
 		message.ReplyMarkup = buttons.InitKeyboard()
+
 		send, err := b.api.Send(message)
+
 		if err != nil {
 			return nil, fmt.Errorf("send start command mock, chat (%v) error: %w", msg.Chat.ID, err)
 		}

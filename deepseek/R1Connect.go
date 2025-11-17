@@ -3,11 +3,12 @@ package deepseek
 import (
 	"context"
 	"fmt"
-	"github.com/mytelegrambot/config"
-	"github.com/openai/openai-go" // imported as openai
-	"github.com/openai/openai-go/option"
-	"go.uber.org/zap"
 	"time"
+
+	"github.com/openai/openai-go"
+	"github.com/openai/openai-go/option"
+	"github.com/vlks-dev/mytelegrambotapi/config"
+	"go.uber.org/zap"
 )
 
 type R1 interface {
@@ -42,19 +43,20 @@ func NewR1(config *config.Config, logger *zap.SugaredLogger) *R1Client {
 func (c *R1Client) AnswerQuestion(ctx context.Context, message string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 40*time.Second)
 	defer cancel()
-	c.logger.Debugf("[Chat Completion] Answering question message: (%v)", message)
+	c.logger.Debugf("[Chat Completion] Answering question message: (%v)", time.Now().Local().Round(time.Second))
 	completion, err := c.client.Chat.Completions.New(
 		ctx,
 		openai.ChatCompletionNewParams{
 			Messages: []openai.ChatCompletionMessageParamUnion{
 				openai.UserMessage(message),
 			},
-			Model: "deepseek/deepseek-chat-v3-0324:free",
+			// Model: "deepseek/deepseek-chat-v3-0324:free",
+			// Model: "deepseek/deepseek-chat-v3.1:free",
+			Model: "deepseek/deepseek-r1-0528-qwen3-8b:free",
 			//Model: "deepseek/deepseek-r1:free",
 		})
 
 	if err != nil {
-
 		if ctx.Err() != nil {
 			return "таймаут/отмена", ctx.Err()
 		}

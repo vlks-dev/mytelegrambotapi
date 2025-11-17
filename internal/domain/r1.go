@@ -1,4 +1,4 @@
-package models
+package domain
 
 type ErrorR1Message struct {
 	Message  string `json:"message"`
