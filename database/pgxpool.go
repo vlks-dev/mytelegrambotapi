@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/mytelegrambot/config"
-	"log"
+	"github.com/vlks-dev/mytelegrambotapi/config"
+	"go.uber.org/zap"
 	"time"
 )
 
-func GetPool(ctx context.Context, config *config.Config) (*pgxpool.Pool, error) {
+func GetPool(ctx context.Context, config *config.Config, logger *zap.SugaredLogger) (*pgxpool.Pool, error) {
+	logger = logger.Named("database")
 	ctx, cancelFunc := context.WithTimeout(ctx, 7*time.Second)
 	defer cancelFunc()
 
@@ -33,7 +34,7 @@ func GetPool(ctx context.Context, config *config.Config) (*pgxpool.Pool, error) 
 	}
 
 	deadline, _ := ctx.Deadline()
-	log.Printf("db pool estabilished, time left: %v\n", time.Until(deadline))
+	logger.Infof("db pool estabilished, time left: %v", time.Until(deadline))
 
 	return pool, nil
 }

@@ -1,18 +1,19 @@
 package logger
 
 import (
-	"github.com/mytelegrambot/config"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"log"
 	"os"
+
+	"github.com/vlks-dev/mytelegrambotapi/config"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type ZapLogger struct {
 	*zap.SugaredLogger
 }
 
-func NewLogger(config *config.Config, serviceName string) *zap.SugaredLogger {
+func NewLogger(config *config.Config) *zap.SugaredLogger {
 	file, err := os.OpenFile("./promtail/log/telemetry.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatalf("error opening file: %v", err)
@@ -54,9 +55,8 @@ func NewLogger(config *config.Config, serviceName string) *zap.SugaredLogger {
 	logger := zap.New(core,
 		zap.AddCaller(),
 		zap.AddStacktrace(zapcore.ErrorLevel),
-		zap.Fields(
-			zap.String("service", serviceName), // Метка service
-			zap.Bool("debug", config.BotEnv),   // Метка environment
+		zap.Fields( // Метка service
+			zap.Bool("debug", config.BotEnv), // Метка environment
 		),
 	)
 

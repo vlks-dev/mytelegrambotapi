@@ -3,11 +3,12 @@ package deepseek
 import (
 	"context"
 	"fmt"
-	"github.com/mytelegrambot/config"
-	"github.com/openai/openai-go" // imported as openai
-	"github.com/openai/openai-go/option"
-	"log"
 	"time"
+
+	"github.com/openai/openai-go"
+	"github.com/openai/openai-go/option"
+	"github.com/vlks-dev/mytelegrambotapi/config"
+	"go.uber.org/zap"
 )
 
 type R1 interface {
@@ -15,35 +16,43 @@ type R1 interface {
 }
 
 type R1Client struct {
+	logger *zap.SugaredLogger
 	client openai.Client
 }
 
-func NewR1(config *config.Config) *R1Client {
+func NewR1(config *config.Config, logger *zap.SugaredLogger) *R1Client {
 	var client openai.Client
 
 	client = openai.NewClient(
 		option.WithBaseURL(
-			"https://openrouter.ai/api/v1",
+			config.AIApiUrl,
 		),
 		option.WithAPIKey(
 			config.R1ProToken,
 		),
 	)
 
-	return &R1Client{client: client}
+	log := logger.Named("AI")
+	log.Debugf("Create new R1-AI client, from API: (%v)", config.AIApiUrl)
+	return &R1Client{
+		logger: log,
+		client: client,
+	}
 }
 
 func (c *R1Client) AnswerQuestion(ctx context.Context, message string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 40*time.Second)
 	defer cancel()
-
+	c.logger.Debugf("[Chat Completion] Answering question message: (%v)", time.Now().Local().Round(time.Second))
 	completion, err := c.client.Chat.Completions.New(
 		ctx,
 		openai.ChatCompletionNewParams{
 			Messages: []openai.ChatCompletionMessageParamUnion{
 				openai.UserMessage(message),
 			},
-			Model: "deepseek/deepseek-chat-v3-0324:free",
+			// Model: "deepseek/deepseek-chat-v3-0324:free",
+			// Model: "deepseek/deepseek-chat-v3.1:free",
+			Model: "deepseek/deepseek-r1-0528-qwen3-8b:free",
 			//Model: "deepseek/deepseek-r1:free",
 		})
 
@@ -56,6 +65,6 @@ func (c *R1Client) AnswerQuestion(ctx context.Context, message string) (string, 
 
 	deadline, _ := ctx.Deadline()
 
-	log.Printf("deepseek completion: %s, time left: %v", completion.ID, time.Until(deadline).Round(time.Second))
+	c.logger.Debugf("deepseek completion: %s, time left: %v", completion.ID, time.Until(deadline).Round(time.Second))
 	return completion.RawJSON(), nil
 }
