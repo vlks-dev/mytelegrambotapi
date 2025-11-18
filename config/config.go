@@ -2,11 +2,12 @@ package config
 
 import (
 	"fmt"
-	"github.com/joho/godotenv"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 type Config struct {
@@ -21,6 +22,9 @@ type Config struct {
 	AIApiUrl           string
 	BotEnv             bool
 	Logger             Logger
+	RedisAddr          string
+	RedisPassword      string
+	RedisDB            int
 }
 
 type Logger struct {
@@ -75,6 +79,12 @@ func LoadEnvCfg(source string) (*Config, error) {
 		)
 	}
 
+	parsedRedisDB, err := strconv.Atoi(os.Getenv("REDIS_DB"))
+	if err != nil {
+		// По умолчанию используем DB 0
+		parsedRedisDB = 0
+	}
+
 	if os.Getenv("BOT_ENV") == "debug" {
 		botDebug = true
 	} else {
@@ -98,6 +108,9 @@ func LoadEnvCfg(source string) (*Config, error) {
 		R1ProToken:         os.Getenv("R1_PRO_TOKEN"),
 		AIApiUrl:           os.Getenv("AI_API_URL"),
 		BotEnv:             botDebug,
+		RedisAddr:          os.Getenv("REDIS_ADDR"),
+		RedisPassword:      os.Getenv("REDIS_PASSWORD"),
+		RedisDB:            parsedRedisDB,
 		Logger: Logger{
 			Development:      logDevelopment,
 			OutputPaths:      strings.Split(os.Getenv("LOG_OUTPUT_PATHS"), ","),

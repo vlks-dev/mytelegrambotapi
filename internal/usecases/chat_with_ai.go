@@ -6,7 +6,7 @@ import (
 
 	"github.com/vlks-dev/mytelegrambotapi/internal/domain"
 	"github.com/vlks-dev/mytelegrambotapi/internal/services"
-	"github.com/vlks-dev/mytelegrambotapi/utils"
+	// "github.com/vlks-dev/mytelegrambotapi/utils"
 	"go.uber.org/zap"
 )
 
@@ -48,6 +48,7 @@ func (u *ChatWithAI) Execute(ctx context.Context, event domain.Event) (*domain.B
 		u.logger.Errorw("Failed to save message", "error", err)
 		// Продолжаем обработку даже если не удалось сохранить
 	}
+	u.logger.Debugw("Saving history message", "FromUsername", message.FromUsername)
 
 	// Получаем историю диалога
 	history, err := u.dialogHistoryService.GetHistory(ctx, textEvent.UserID())
@@ -72,7 +73,7 @@ func (u *ChatWithAI) Execute(ctx context.Context, event domain.Event) (*domain.B
 		MessageID:    0, // Будет установлено после отправки
 		FromID:       0, // ID бота
 		FromUsername: "bot",
-		Text:         utils.Truncate(answer, 200),
+		Text:         answer, // utils.Truncate(answer, 200)
 		Timestamp:    time.Now(),
 	}
 

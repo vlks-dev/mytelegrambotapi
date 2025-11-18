@@ -3,12 +3,13 @@ package bot
 import (
 	"context"
 	"fmt"
+	"time"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/go-telegram/bot"
 	"github.com/vlks-dev/mytelegrambotapi/bot/buttons"
 	"github.com/vlks-dev/mytelegrambotapi/config"
 	"go.uber.org/zap"
-	"time"
 )
 
 type AIBotAPI interface {
@@ -18,6 +19,16 @@ type AIBotAPI interface {
 	HandleCommand(ctx context.Context, msg *tgbotapi.Message, msgIDs []int) (*tgbotapi.Message, error)
 	GetMyCommands() ([]tgbotapi.BotCommand, error)
 	DeleteMessage(ctx context.Context, chatID int64, msgID int) error
+}
+
+// ExtendedBotAPI расширенный интерфейс для дополнительных методов Telegram API
+type ExtendedBotAPI interface {
+	AIBotAPI
+	SendPhoto(ctx context.Context, chatID int64, fileID string, caption string) (*tgbotapi.Message, error)
+	SendVoice(ctx context.Context, chatID int64, fileID string, caption string) (*tgbotapi.Message, error)
+	SendVideo(ctx context.Context, chatID int64, fileID string, caption string) (*tgbotapi.Message, error)
+	EditMessageText(ctx context.Context, chatID int64, messageID int, text string, replyMarkup *tgbotapi.InlineKeyboardMarkup) (*tgbotapi.Message, error)
+	AnswerCallbackQuery(ctx context.Context, queryID string, text string, showAlert bool) error
 }
 
 type Bot struct {
@@ -160,4 +171,67 @@ func (b *Bot) SendMessage(chatID int64, text string) (*tgbotapi.Message, error) 
 	}
 
 	return &message, nil
+}
+
+// SendPhoto отправляет фото
+func (b *Bot) SendPhoto(ctx context.Context, chatID int64, fileID string, caption string) (*tgbotapi.Message, error) {
+	photo := tgbotapi.NewPhoto(chatID, tgbotapi.FileID(fileID))
+	if caption != "" {
+		photo.Caption = caption
+	}
+	message, err := b.api.Send(photo)
+	if err != nil {
+		return nil, fmt.Errorf("send photo: %w", err)
+	}
+	return &message, nil
+}
+
+// SendVoice отправляет голосовое сообщение
+func (b *Bot) SendVoice(ctx context.Context, chatID int64, fileID string, caption string) (*tgbotapi.Message, error) {
+	voice := tgbotapi.NewVoice(chatID, tgbotapi.FileID(fileID))
+	if caption != "" {
+		voice.Caption = caption
+	}
+	message, err := b.api.Send(voice)
+	if err != nil {
+		return nil, fmt.Errorf("send voice: %w", err)
+	}
+	return &message, nil
+}
+
+// SendVideo отправляет видео
+func (b *Bot) SendVideo(ctx context.Context, chatID int64, fileID string, caption string) (*tgbotapi.Message, error) {
+	video := tgbotapi.NewVideo(chatID, tgbotapi.FileID(fileID))
+	if caption != "" {
+		video.Caption = caption
+	}
+	message, err := b.api.Send(video)
+	if err != nil {
+		return nil, fmt.Errorf("send video: %w", err)
+	}
+	return &message, nil
+}
+
+// EditMessageText редактирует текстовое сообщение
+func (b *Bot) EditMessageText(ctx context.Context, chatID int64, messageID int, text string, replyMarkup *tgbotapi.InlineKeyboardMarkup) (*tgbotapi.Message, error) {
+	edit := tgbotapi.NewEditMessageText(chatID, messageID, text)
+	if replyMarkup != nil {
+		edit.ReplyMarkup = replyMarkup
+	}
+	message, err := b.api.Send(edit)
+	if err != nil {
+		return nil, fmt.Errorf("edit message: %w", err)
+	}
+	return &message, nil
+}
+
+// AnswerCallbackQuery отвечает на callback query
+func (b *Bot) AnswerCallbackQuery(ctx context.Context, queryID string, text string, showAlert bool) error {
+	callback := tgbotapi.NewCallback(queryID, text)
+	callback.ShowAlert = showAlert
+	_, err := b.api.Request(callback)
+	if err != nil {
+		return fmt.Errorf("answer callback query: %w", err)
+	}
+	return nil
 }

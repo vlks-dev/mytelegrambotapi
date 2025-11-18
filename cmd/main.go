@@ -53,13 +53,24 @@ func main() {
 	}
 	defer pool.Close()
 
+	// Инициализация Redis
+	redisClient, err := database.GetRedisClient(ctx, botCfg, sugaredLogger)
+	if err != nil {
+		sugaredLogger.Warnw("Failed to connect to Redis, continuing without Redis",
+			"error", err,
+		)
+		redisClient = nil
+	} else if redisClient != nil {
+		defer redisClient.Close()
+	}
+
 	// Инициализация DeepSeek R1
 	r1 := deepseek.NewR1(botCfg, sugaredLogger)
 
 	// Инициализация сервисов
 	aiService := services.NewAIService(r1, sugaredLogger)
 	speechToTextService := services.NewSpeechToTextServiceStub() // Заглушка
-	dialogHistoryService := services.NewDialogHistoryService(pool, sugaredLogger)
+	dialogHistoryService := services.NewDialogHistoryService(pool, redisClient, sugaredLogger)
 	userRepository := services.NewUserRepository(pool, sugaredLogger)
 
 	// Инициализация use cases
@@ -67,8 +78,8 @@ func main() {
 	helpUser := usecases.NewHelpUser(sugaredLogger)
 	chatWithAI := usecases.NewChatWithAI(aiService, dialogHistoryService, sugaredLogger)
 	processVoice := usecases.NewProcessVoiceMessage(speechToTextService, aiService, dialogHistoryService, sugaredLogger)
-	handleCallback := usecases.NewHandleCallback()
-	adminUseCases := usecases.NewAdminUseCases(userRepository)
+	handleCallback := usecases.NewHandleCallback(sugaredLogger)
+	adminUseCases := usecases.NewAdminUseCases(userRepository, sugaredLogger)
 	fallbackHandler := usecases.NewFallbackHandler()
 
 	// Инициализация router

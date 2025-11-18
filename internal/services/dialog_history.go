@@ -3,10 +3,12 @@ package services
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 	"github.com/vlks-dev/mytelegrambotapi/internal/domain"
 	"go.uber.org/zap"
-	"time"
 )
 
 // DialogHistoryService интерфейс для работы с историей диалогов
@@ -24,17 +26,17 @@ type DialogHistoryService interface {
 // dialogHistoryService реализация DialogHistoryService
 // PostgreSQL для долгоживущей истории, Redis для краткоживущего состояния
 type dialogHistoryService struct {
-	pool   *pgxpool.Pool
-	logger *zap.SugaredLogger
-	// TODO: добавить Redis клиент для состояния
-	// redisClient *redis.Client
+	pool        *pgxpool.Pool
+	redisClient *redis.Client
+	logger      *zap.SugaredLogger
 }
 
 // NewDialogHistoryService создает новый DialogHistoryService
-func NewDialogHistoryService(pool *pgxpool.Pool, logger *zap.SugaredLogger) DialogHistoryService {
+func NewDialogHistoryService(pool *pgxpool.Pool, redisClient *redis.Client, logger *zap.SugaredLogger) DialogHistoryService {
 	return &dialogHistoryService{
-		pool:   pool,
-		logger: logger.Named("dialog_history_service"),
+		pool:        pool,
+		redisClient: redisClient,
+		logger:      logger.Named("dialog_history_service"),
 	}
 }
 
@@ -104,9 +106,42 @@ func (s *dialogHistoryService) SaveMessage(ctx context.Context, userID int64, me
 }
 
 // GetState возвращает текущее состояние диалога пользователя из Redis
-// TODO: реализовать с Redis клиентом
 func (s *dialogHistoryService) GetState(ctx context.Context, userID int64) (string, error) {
-	// Временная реализация: получаем из PostgreSQL
+	// Если Redis не настроен, используем PostgreSQL как fallback
+	if s.redisClient == nil {
+		return s.getStateFromPostgreSQL(ctx, userID)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	key := fmt.Sprintf("user:state:%d", userID)
+	state, err := s.redisClient.Get(ctx, key).Result()
+	if err == redis.Nil {
+		// Ключ не найден, возвращаем дефолтное состояние
+		s.logger.Debugw("State not found in Redis, returning default",
+			"user_id", userID,
+		)
+		return "default", nil
+	}
+	if err != nil {
+		s.logger.Errorw("Failed to get state from Redis, falling back to PostgreSQL",
+			"user_id", userID,
+			"error", err,
+		)
+		// Fallback на PostgreSQL при ошибке Redis
+		return s.getStateFromPostgreSQL(ctx, userID)
+	}
+
+	s.logger.Debugw("Got state from Redis",
+		"user_id", userID,
+		"state", state,
+	)
+	return state, nil
+}
+
+// getStateFromPostgreSQL получает состояние из PostgreSQL (fallback)
+func (s *dialogHistoryService) getStateFromPostgreSQL(ctx context.Context, userID int64) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
@@ -125,9 +160,37 @@ func (s *dialogHistoryService) GetState(ctx context.Context, userID int64) (stri
 }
 
 // SetState устанавливает состояние диалога пользователя в Redis
-// TODO: реализовать с Redis клиентом
 func (s *dialogHistoryService) SetState(ctx context.Context, userID int64, state string) error {
-	// Временная реализация: сохраняем в PostgreSQL
+	// Если Redis не настроен, используем PostgreSQL как fallback
+	if s.redisClient == nil {
+		return s.setStateToPostgreSQL(ctx, userID, state)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	key := fmt.Sprintf("user:state:%d", userID)
+	// Устанавливаем состояние с TTL 24 часа (краткоживущее состояние)
+	err := s.redisClient.Set(ctx, key, state, 24*time.Hour).Err()
+	if err != nil {
+		s.logger.Errorw("Failed to set state in Redis, falling back to PostgreSQL",
+			"user_id", userID,
+			"state", state,
+			"error", err,
+		)
+		// Fallback на PostgreSQL при ошибке Redis
+		return s.setStateToPostgreSQL(ctx, userID, state)
+	}
+
+	s.logger.Debugw("Set state in Redis",
+		"user_id", userID,
+		"state", state,
+	)
+	return nil
+}
+
+// setStateToPostgreSQL сохраняет состояние в PostgreSQL (fallback)
+func (s *dialogHistoryService) setStateToPostgreSQL(ctx context.Context, userID int64, state string) error {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
@@ -142,37 +205,8 @@ func (s *dialogHistoryService) SetState(ctx context.Context, userID int64, state
 	)
 
 	if err != nil {
-		return fmt.Errorf("failed to set state: %w", err)
+		return fmt.Errorf("failed to set state in PostgreSQL: %w", err)
 	}
 
 	return nil
 }
-
-// dialogHistoryServiceStub заглушка реализации DialogHistoryService
-type dialogHistoryServiceStub struct{}
-
-// NewDialogHistoryServiceStub создает заглушку DialogHistoryService
-func NewDialogHistoryServiceStub() DialogHistoryService {
-	return &dialogHistoryServiceStub{}
-}
-
-// GetHistory заглушка метода получения истории
-func (s *dialogHistoryServiceStub) GetHistory(ctx context.Context, userID int64) ([]domain.Message, error) {
-	return []domain.Message{}, nil
-}
-
-// SaveMessage заглушка метода сохранения сообщения
-func (s *dialogHistoryServiceStub) SaveMessage(ctx context.Context, userID int64, message *domain.Message) error {
-	return nil
-}
-
-// GetState заглушка метода получения состояния
-func (s *dialogHistoryServiceStub) GetState(ctx context.Context, userID int64) (string, error) {
-	return "default", nil
-}
-
-// SetState заглушка метода установки состояния
-func (s *dialogHistoryServiceStub) SetState(ctx context.Context, userID int64, state string) error {
-	return nil
-}
-
