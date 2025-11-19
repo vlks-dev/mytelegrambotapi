@@ -3,6 +3,9 @@ package bot
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -29,6 +32,8 @@ type ExtendedBotAPI interface {
 	SendVideo(ctx context.Context, chatID int64, fileID string, caption string) (*tgbotapi.Message, error)
 	EditMessageText(ctx context.Context, chatID int64, messageID int, text string, replyMarkup *tgbotapi.InlineKeyboardMarkup) (*tgbotapi.Message, error)
 	AnswerCallbackQuery(ctx context.Context, queryID string, text string, showAlert bool) error
+	GetFile(ctx context.Context, fileID string) (*tgbotapi.File, error)
+	DownloadFile(ctx context.Context, fileID string, destPath string) error
 }
 
 type Bot struct {
@@ -113,7 +118,7 @@ func (b *Bot) HandleCommand(ctx context.Context, msg *tgbotapi.Message, msgIDs [
 		}
 		return answer, nil
 	case "start":
-		message := tgbotapi.NewMessage(chatID, fmt.Sprint("Привет! Задавай мне вопросы, а постараюсь ответить на них правильно! (на базе DeepSeek v3)"))
+		message := tgbotapi.NewMessage(chatID, "Привет! Задавай мне вопросы, а постараюсь ответить на них правильно! (на базе DeepSeek v3)")
 		message.ReplyMarkup = buttons.InitKeyboard()
 
 		send, err := b.api.Send(message)
@@ -233,5 +238,60 @@ func (b *Bot) AnswerCallbackQuery(ctx context.Context, queryID string, text stri
 	if err != nil {
 		return fmt.Errorf("answer callback query: %w", err)
 	}
+	return nil
+}
+
+// GetFile получает информацию о файле по fileID
+func (b *Bot) GetFile(ctx context.Context, fileID string) (*tgbotapi.File, error) {
+	file, err := b.api.GetFile(tgbotapi.FileConfig{FileID: fileID})
+	if err != nil {
+		return nil, fmt.Errorf("get file: %w", err)
+	}
+	return &file, nil
+}
+
+// DownloadFile скачивает файл из Telegram по fileID
+func (b *Bot) DownloadFile(ctx context.Context, fileID string, destPath string) error {
+	// Получаем URL файла по fileID
+	url, err := b.api.GetFileDirectURL(fileID)
+	if err != nil {
+		return fmt.Errorf("get file URL: %w", err)
+	}
+
+	// Создаем HTTP запрос
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+
+	// Выполняем запрос
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("download file: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download file: status code %d", resp.StatusCode)
+	}
+
+	// Создаем файл для записи
+	outFile, err := os.Create(destPath)
+	if err != nil {
+		return fmt.Errorf("create file: %w", err)
+	}
+	defer outFile.Close()
+
+	// Копируем данные
+	_, err = io.Copy(outFile, resp.Body)
+	if err != nil {
+		return fmt.Errorf("copy file: %w", err)
+	}
+
+	b.logger.Debugw("File downloaded",
+		"file_id", fileID,
+		"dest_path", destPath,
+	)
 	return nil
 }
