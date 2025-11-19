@@ -33,7 +33,7 @@ type ExtendedBotAPI interface {
 	EditMessageText(ctx context.Context, chatID int64, messageID int, text string, replyMarkup *tgbotapi.InlineKeyboardMarkup) (*tgbotapi.Message, error)
 	AnswerCallbackQuery(ctx context.Context, queryID string, text string, showAlert bool) error
 	GetFile(ctx context.Context, fileID string) (*tgbotapi.File, error)
-	DownloadFile(ctx context.Context, filePath string, destPath string) error
+	DownloadFile(ctx context.Context, fileID string, destPath string) error
 }
 
 type Bot struct {
@@ -250,9 +250,10 @@ func (b *Bot) GetFile(ctx context.Context, fileID string) (*tgbotapi.File, error
 	return &file, nil
 }
 
-// DownloadFile скачивает файл из Telegram по filePath
-func (b *Bot) DownloadFile(ctx context.Context, filePath string, destPath string) error {
-	url, err := b.api.GetFileDirectURL(filePath)
+// DownloadFile скачивает файл из Telegram по fileID
+func (b *Bot) DownloadFile(ctx context.Context, fileID string, destPath string) error {
+	// Получаем URL файла по fileID
+	url, err := b.api.GetFileDirectURL(fileID)
 	if err != nil {
 		return fmt.Errorf("get file URL: %w", err)
 	}
@@ -289,7 +290,7 @@ func (b *Bot) DownloadFile(ctx context.Context, filePath string, destPath string
 	}
 
 	b.logger.Debugw("File downloaded",
-		"file_path", filePath,
+		"file_id", fileID,
 		"dest_path", destPath,
 	)
 	return nil

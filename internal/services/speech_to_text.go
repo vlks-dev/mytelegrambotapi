@@ -60,18 +60,9 @@ func (s *whisperHTTPClient) Transcribe(ctx context.Context, fileID string) (stri
 		"file_id", fileID,
 	)
 
-	// Шаг 1: Получаем информацию о файле
-	file, err := s.botAPI.GetFile(ctx, fileID)
-	if err != nil {
-		return "", fmt.Errorf("get file info: %w", err)
-	}
-
-	// Шаг 2: Скачиваем файл
-	if file.FilePath == "" {
-		return "", fmt.Errorf("file path is empty for file_id: %s", fileID)
-	}
+	// Шаг 2: Скачиваем файл напрямую по fileID
 	originalPath := filepath.Join(s.tempDir, fmt.Sprintf("voice_%s_%d.ogg", fileID, time.Now().Unix()))
-	err = s.botAPI.DownloadFile(ctx, file.FilePath, originalPath)
+	err := s.botAPI.DownloadFile(ctx, fileID, originalPath)
 	if err != nil {
 		return "", fmt.Errorf("download file: %w", err)
 	}
