@@ -25,6 +25,8 @@ type Config struct {
 	RedisAddr          string
 	RedisPassword      string
 	RedisDB            int
+	WhisperServiceURL  string
+	TempDir            string
 }
 
 type Logger struct {
@@ -111,6 +113,8 @@ func LoadEnvCfg(source string) (*Config, error) {
 		RedisAddr:          os.Getenv("REDIS_ADDR"),
 		RedisPassword:      os.Getenv("REDIS_PASSWORD"),
 		RedisDB:            parsedRedisDB,
+		WhisperServiceURL:  os.Getenv("WHISPER_SERVICE_URL"),
+		TempDir:            getEnvOrDefault("TEMP_DIR", "/tmp"),
 		Logger: Logger{
 			Development:      logDevelopment,
 			OutputPaths:      strings.Split(os.Getenv("LOG_OUTPUT_PATHS"), ","),
@@ -118,4 +122,13 @@ func LoadEnvCfg(source string) (*Config, error) {
 		},
 	}
 	return cfg, nil
+}
+
+// getEnvOrDefault возвращает значение переменной окружения или значение по умолчанию
+func getEnvOrDefault(key, defaultValue string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	return value
 }
