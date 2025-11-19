@@ -69,7 +69,7 @@ func main() {
 
 	// Инициализация сервисов
 	aiService := services.NewAIService(r1, sugaredLogger)
-	speechToTextService := services.NewSpeechToTextServiceStub() // Заглушка
+	speechToTextService := services.NewWhisperHTTPClient(b, botCfg, sugaredLogger)
 	dialogHistoryService := services.NewDialogHistoryService(pool, redisClient, sugaredLogger)
 	userRepository := services.NewUserRepository(pool, sugaredLogger)
 
