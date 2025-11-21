@@ -104,7 +104,7 @@ func (s *whisperHTTPClient) Transcribe(ctx context.Context, fileID string) (stri
 		}
 
 		if ctx.Err() != nil {
-			return "", fmt.Errorf("context deadline exceeded: %w", ctx.Err())
+			return "", fmt.Errorf("transcription attempt timeout: %w", ctx.Err())
 		}
 
 		s.logger.Warnw("Transcription attempt failed",

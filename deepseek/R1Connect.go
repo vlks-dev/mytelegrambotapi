@@ -41,7 +41,7 @@ func NewR1(config *config.Config, logger *zap.SugaredLogger) *R1Client {
 }
 
 func (c *R1Client) AnswerQuestion(ctx context.Context, message string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 40*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 	c.logger.Debugf("[Chat Completion] Answering question message: (%v)", time.Now().Local().Round(time.Second))
 	completion, err := c.client.Chat.Completions.New(
