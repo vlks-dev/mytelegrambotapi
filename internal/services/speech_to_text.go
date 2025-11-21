@@ -53,7 +53,7 @@ func NewWhisperHTTPClient(botAPI bot.ExtendedBotAPI, cfg *config.Config, logger 
 
 // Transcribe преобразует голосовое сообщение в текст
 func (s *whisperHTTPClient) Transcribe(ctx context.Context, fileID string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 300*time.Second)
 	defer cancel()
 
 	s.logger.Debugw("Starting transcription",
