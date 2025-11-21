@@ -48,7 +48,7 @@ func (c *R1Client) AnswerQuestion(ctx context.Context, message string) (string, 
 		ctx,
 		openai.ChatCompletionNewParams{
 			Messages: []openai.ChatCompletionMessageParamUnion{
-				openai.UserMessage(message),
+				openai.UserMessage("Prepare answer in 2000 characters, or less, use telegram messenger markdown format:" + message),
 			},
 			// Model: "deepseek/deepseek-chat-v3-0324:free",
 			// Model: "deepseek/deepseek-chat-v3.1:free",
