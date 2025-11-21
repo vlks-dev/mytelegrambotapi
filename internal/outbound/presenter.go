@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/vlks-dev/mytelegrambotapi/bot"
 	"github.com/vlks-dev/mytelegrambotapi/internal/domain"
 	"go.uber.org/zap"
@@ -23,38 +24,36 @@ func NewTelegramPresenter(botAPI bot.ExtendedBotAPI, logger *zap.SugaredLogger) 
 	}
 }
 
-// Send отправляет BotResponse пользователю
-func (p *TelegramPresenter) Send(ctx context.Context, chatID int64, response *domain.BotResponse) error {
+// Send отправляет BotResponse пользователю и возвращает отправленное сообщение (если есть)
+func (p *TelegramPresenter) Send(ctx context.Context, chatID int64, response *domain.BotResponse) (*tgbotapi.Message, error) {
 	if response == nil {
-		return nil
+		return nil, nil
 	}
 
 	// Обработка callback answer
 	if response.Callback != nil {
-		err := p.AnswerCallbackQuery(ctx, response.Callback.QueryID, response.Callback.Text, response.Callback.ShowAlert)
-		if err != nil {
+		if err := p.AnswerCallbackQuery(ctx, response.Callback.QueryID, response.Callback.Text, response.Callback.ShowAlert); err != nil {
 			p.logger.Errorw("Failed to answer callback", "error", err)
-			return err
+			return nil, err
 		}
 		// После ответа на callback, если есть текст, отправляем сообщение
 		if response.Text != "" {
 			return p.SendMessage(ctx, chatID, response.Text)
 		}
-		return nil
+		return nil, nil
 	}
 
 	// Обработка редактирования сообщения
 	if response.Edit != nil {
-		err := p.EditMessage(ctx, chatID, response.Edit.MessageID, response.Edit.Text)
-		if err != nil {
+		if err := p.EditMessage(ctx, chatID, response.Edit.MessageID, response.Edit.Text); err != nil {
 			p.logger.Errorw("Failed to edit message",
 				"error", err,
 				"chat_id", chatID,
 				"message_id", response.Edit.MessageID,
 			)
-			return err
+			return nil, err
 		}
-		return nil
+		return nil, nil
 	}
 
 	// Обработка файла
@@ -73,80 +72,80 @@ func (p *TelegramPresenter) Send(ctx context.Context, chatID int64, response *do
 
 	// Обработка текстового сообщения
 	if response.Text != "" {
-		_, err := p.botAPI.SendMessage(chatID, response.Text)
-		if err != nil {
-			p.logger.Errorw("Failed to send message", "error", err)
-			return err
-		}
+		return p.SendMessage(ctx, chatID, response.Text)
 	}
 
-	return nil
+	return nil, nil
 }
 
-// SendMessage отправляет текстовое сообщение
-func (p *TelegramPresenter) SendMessage(ctx context.Context, chatID int64, text string) error {
-	_, err := p.botAPI.SendMessage(chatID, text)
-	return err
+// SendMessage отправляет текстовое сообщение и возвращает отправленное сообщение
+func (p *TelegramPresenter) SendMessage(ctx context.Context, chatID int64, text string) (*tgbotapi.Message, error) {
+	msg, err := p.botAPI.SendMessage(chatID, text)
+	if err != nil {
+		p.logger.Errorw("Failed to send message", "error", err)
+		return nil, err
+	}
+	return msg, nil
 }
 
-// SendPhoto отправляет фото
-func (p *TelegramPresenter) SendPhoto(ctx context.Context, chatID int64, fileID string, caption string) error {
+// SendPhoto отправляет фото и возвращает отправленное сообщение
+func (p *TelegramPresenter) SendPhoto(ctx context.Context, chatID int64, fileID string, caption string) (*tgbotapi.Message, error) {
 	p.logger.Debugw("Sending photo",
 		"chat_id", chatID,
 		"file_id", fileID,
 		"caption", caption,
 	)
-	_, err := p.botAPI.SendPhoto(ctx, chatID, fileID, caption)
+	msg, err := p.botAPI.SendPhoto(ctx, chatID, fileID, caption)
 	if err != nil {
 		p.logger.Errorw("Failed to send photo",
 			"chat_id", chatID,
 			"file_id", fileID,
 			"error", err,
 		)
-		return fmt.Errorf("send photo: %w", err)
+		return nil, fmt.Errorf("send photo: %w", err)
 	}
 	p.logger.Debugw("Photo sent successfully", "chat_id", chatID)
-	return nil
+	return msg, nil
 }
 
-// SendVoice отправляет голосовое сообщение
-func (p *TelegramPresenter) SendVoice(ctx context.Context, chatID int64, fileID string, caption string) error {
+// SendVoice отправляет голосовое сообщение и возвращает отправленное сообщение
+func (p *TelegramPresenter) SendVoice(ctx context.Context, chatID int64, fileID string, caption string) (*tgbotapi.Message, error) {
 	p.logger.Debugw("Sending voice",
 		"chat_id", chatID,
 		"file_id", fileID,
 		"caption", caption,
 	)
-	_, err := p.botAPI.SendVoice(ctx, chatID, fileID, caption)
+	msg, err := p.botAPI.SendVoice(ctx, chatID, fileID, caption)
 	if err != nil {
 		p.logger.Errorw("Failed to send voice",
 			"chat_id", chatID,
 			"file_id", fileID,
 			"error", err,
 		)
-		return fmt.Errorf("send voice: %w", err)
+		return nil, fmt.Errorf("send voice: %w", err)
 	}
 	p.logger.Debugw("Voice sent successfully", "chat_id", chatID)
-	return nil
+	return msg, nil
 }
 
-// SendVideo отправляет видео
-func (p *TelegramPresenter) SendVideo(ctx context.Context, chatID int64, fileID string, caption string) error {
+// SendVideo отправляет видео и возвращает отправленное сообщение
+func (p *TelegramPresenter) SendVideo(ctx context.Context, chatID int64, fileID string, caption string) (*tgbotapi.Message, error) {
 	p.logger.Debugw("Sending video",
 		"chat_id", chatID,
 		"file_id", fileID,
 		"caption", caption,
 	)
-	_, err := p.botAPI.SendVideo(ctx, chatID, fileID, caption)
+	msg, err := p.botAPI.SendVideo(ctx, chatID, fileID, caption)
 	if err != nil {
 		p.logger.Errorw("Failed to send video",
 			"chat_id", chatID,
 			"file_id", fileID,
 			"error", err,
 		)
-		return fmt.Errorf("send video: %w", err)
+		return nil, fmt.Errorf("send video: %w", err)
 	}
 	p.logger.Debugw("Video sent successfully", "chat_id", chatID)
-	return nil
+	return msg, nil
 }
 
 // EditMessage редактирует сообщение

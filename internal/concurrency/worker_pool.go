@@ -14,8 +14,9 @@ type EventProcessor interface {
 
 // WorkerPool обрабатывает события конкурентно через пул воркеров
 type WorkerPool struct {
-	workers      int
-	eventChan    chan domain.Event
+	workers int
+	// eventChan теперь содержит пару: событие и ID заглушки (messageID) если есть
+	eventChan    chan queuedEvent
 	processor    EventProcessor
 	logger       *zap.SugaredLogger
 	responseChan chan *Response
@@ -26,13 +27,20 @@ type Response struct {
 	Event    domain.Event
 	Response *domain.BotResponse
 	Error    error
+	// PlaceholderMessageID — message id заглушки, если она была отправлена до обработки
+	PlaceholderMessageID int
+}
+
+type queuedEvent struct {
+	Event                domain.Event
+	PlaceholderMessageID int
 }
 
 // NewWorkerPool создает новый WorkerPool
 func NewWorkerPool(workers int, processor EventProcessor, logger *zap.SugaredLogger) *WorkerPool {
 	return &WorkerPool{
 		workers:      workers,
-		eventChan:    make(chan domain.Event, 100),
+		eventChan:    make(chan queuedEvent, 100),
 		processor:    processor,
 		logger:       logger.Named("worker_pool"),
 		responseChan: make(chan *Response, 100),
@@ -40,8 +48,8 @@ func NewWorkerPool(workers int, processor EventProcessor, logger *zap.SugaredLog
 }
 
 // Submit добавляет событие в очередь обработки
-func (wp *WorkerPool) Submit(event domain.Event) {
-	wp.eventChan <- event
+func (wp *WorkerPool) Submit(event domain.Event, placeholderMsgID int) {
+	wp.eventChan <- queuedEvent{Event: event, PlaceholderMessageID: placeholderMsgID}
 	wp.logger.Debugw("Event submitted to worker pool",
 		"event_type", event.Type(),
 		"chat_id", event.ChatID(),
@@ -65,7 +73,8 @@ func (wp *WorkerPool) worker(ctx context.Context, id int) {
 
 	for {
 		select {
-		case event := <-wp.eventChan:
+		case qe := <-wp.eventChan:
+			event := qe.Event
 			if event == nil {
 				wp.logger.Warnf("Worker %d received nil event", id)
 				continue
@@ -94,9 +103,10 @@ func (wp *WorkerPool) worker(ctx context.Context, id int) {
 				)
 			}
 			wp.responseChan <- &Response{
-				Event:    event,
-				Response: response,
-				Error:    err,
+				Event:                event,
+				Response:             response,
+				Error:                err,
+				PlaceholderMessageID: qe.PlaceholderMessageID,
 			}
 		case <-ctx.Done():
 			wp.logger.Debugf("Worker %d received shutdown signal", id)

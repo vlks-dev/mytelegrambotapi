@@ -13,6 +13,7 @@ import (
 	"github.com/vlks-dev/mytelegrambotapi/database"
 	"github.com/vlks-dev/mytelegrambotapi/deepseek"
 	"github.com/vlks-dev/mytelegrambotapi/internal/concurrency"
+	"github.com/vlks-dev/mytelegrambotapi/internal/domain"
 	"github.com/vlks-dev/mytelegrambotapi/internal/inbound"
 	"github.com/vlks-dev/mytelegrambotapi/internal/outbound"
 	"github.com/vlks-dev/mytelegrambotapi/internal/routing"
@@ -135,8 +136,31 @@ func main() {
 				// Преобразуем update в событие
 				event := gateway.ProcessUpdate(update)
 				if event != nil {
-					// Отправляем событие в worker pool
-					workerPool.Submit(event)
+					// Отправляем заглушку в чат и получаем messageID
+					var placeholder string
+					switch event.(type) {
+					case domain.TextMessageReceived:
+						placeholder = "Сообщение получено, обрабатываю..."
+					case domain.VoiceReceived:
+						placeholder = "Голосовое сообщение получено, распознаю и обрабатываю..."
+					case domain.VideoReceived:
+						placeholder = "Видео получено, обрабатываю..."
+					default:
+						placeholder = "Обрабатываю ваш запрос..."
+					}
+
+					placeholderMsgID := 0
+					if placeholder != "" {
+						msg, err := presenter.Send(ctx, event.ChatID(), domain.NewTextResponse(placeholder))
+						if err != nil {
+							sugaredLogger.Warnw("Failed to send processing placeholder", "error", err, "chat_id", event.ChatID())
+						} else if msg != nil {
+							placeholderMsgID = msg.MessageID
+						}
+					}
+
+					// Отправляем событие в worker pool вместе с placeholderMsgID
+					workerPool.Submit(event, placeholderMsgID)
 					sugaredLogger.Debugw("Event submitted to worker pool",
 						"event_type", event.Type(),
 						"chat_id", event.ChatID(),
@@ -164,21 +188,50 @@ func main() {
 					sugaredLogger.Warn("Received nil response from worker pool")
 					continue
 				}
+				chatID := response.Event.ChatID()
+				placeholderID := response.PlaceholderMessageID
+				// Сформируем текст для обновления заглушки
+				var newText string
 				if response.Error != nil {
-					sugaredLogger.Errorw("Error processing event",
-						"error", response.Error,
-						"event_type", response.Event.Type(),
-						"chat_id", response.Event.ChatID(),
-						"user_id", response.Event.UserID(),
-					)
+					newText = "Ошибка при обработке: " + response.Error.Error()
+				} else if response.Response == nil {
+					newText = "Обработка завершена."
+				} else if response.Response.Text != "" {
+					newText = response.Response.Text
+				} else if response.Response.File != nil {
+					newText = "Готово — отправляю файл..."
 				} else {
-					sugaredLogger.Debugw("Event processed successfully",
-						"event_type", response.Event.Type(),
-						"chat_id", response.Event.ChatID(),
-						"user_id", response.Event.UserID(),
-						"has_response", response.Response != nil,
-					)
+					newText = "Обработка завершена."
 				}
+
+				// Если была заглушка — отредактируем её
+				if placeholderID != 0 {
+					if err := presenter.EditMessage(ctx, chatID, placeholderID, newText); err != nil {
+						sugaredLogger.Warnw("Failed to edit placeholder message", "error", err, "chat_id", chatID, "message_id", placeholderID)
+					}
+				}
+
+				// Если нужно отправить файл — отправляем и обновляем заглушку по результату
+				if response.Error == nil && response.Response != nil && response.Response.File != nil {
+					if _, err := presenter.Send(ctx, chatID, response.Response); err != nil {
+						sugaredLogger.Errorw("Failed to send file response", "error", err, "chat_id", chatID)
+						if placeholderID != 0 {
+							_ = presenter.EditMessage(ctx, chatID, placeholderID, "Ошибка при отправке файла")
+						}
+					} else {
+						if placeholderID != 0 {
+							_ = presenter.EditMessage(ctx, chatID, placeholderID, "Файл отправлен")
+						}
+					}
+				}
+
+				sugaredLogger.Debugw("Event processed",
+					"event_type", response.Event.Type(),
+					"chat_id", chatID,
+					"user_id", response.Event.UserID(),
+					"has_response", response.Response != nil,
+					"error", response.Error,
+				)
 			case <-ctx.Done():
 				sugaredLogger.Info("Response processing loop stopped")
 				return
