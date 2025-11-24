@@ -118,6 +118,7 @@ func NewCallbackReceived(chatID, userID int64, data, queryID string, messageID i
 type VoiceReceived struct {
 	chatID    int64
 	userID    int64
+	Username  string
 	FileID    string
 	Duration  int
 	MessageID int
@@ -136,10 +137,11 @@ func (e VoiceReceived) UserID() int64 {
 }
 
 // NewVoiceReceived создает новое событие VoiceReceived
-func NewVoiceReceived(chatID, userID int64, fileID string, duration, messageID int) VoiceReceived {
+func NewVoiceReceived(chatID, userID int64, username, fileID string, duration, messageID int) VoiceReceived {
 	return VoiceReceived{
 		chatID:    chatID,
 		userID:    userID,
+		Username:  username,
 		FileID:    fileID,
 		Duration:  duration,
 		MessageID: messageID,

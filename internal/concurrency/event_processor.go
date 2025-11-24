@@ -70,24 +70,15 @@ func (ep *eventProcessor) Process(ctx context.Context, event domain.Event) (*dom
 		return nil, err
 	}
 
-	// Отправляем ответ через presenter
-	if response != nil {
-		err = ep.presenter.Send(ctx, chatID, response)
-		if err != nil {
-			ep.logger.Errorw("Failed to send response",
-				"error", err,
-				"chat_id", chatID,
-				"user_id", userID,
-			)
-			return response, err
-		}
-		ep.logger.Debugw("Event processed successfully",
+	// Возвращаем response; финальная отправка/редактирование выполняется выше (в месте приема Response из workerPool)
+	if response == nil {
+		ep.logger.Warnw("Use case returned nil response",
 			"event_type", eventType,
 			"chat_id", chatID,
 			"user_id", userID,
 		)
 	} else {
-		ep.logger.Warnw("Use case returned nil response",
+		ep.logger.Debugw("Use case produced a response",
 			"event_type", eventType,
 			"chat_id", chatID,
 			"user_id", userID,

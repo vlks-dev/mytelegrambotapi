@@ -88,9 +88,14 @@ func (g *TelegramGateway) ProcessUpdate(update tgbotapi.Update) domain.Event {
 
 	// Обработка голосовых сообщений
 	if msg.Voice != nil {
+		username := ""
+		if msg.From != nil && msg.From.UserName != "" {
+			username = msg.From.UserName
+		}
 		event := domain.NewVoiceReceived(
 			chatID,
 			userID,
+			username,
 			msg.Voice.FileID,
 			msg.Voice.Duration,
 			messageID,
@@ -98,6 +103,7 @@ func (g *TelegramGateway) ProcessUpdate(update tgbotapi.Update) domain.Event {
 		g.logger.Infow("Processed voice message",
 			"chat_id", chatID,
 			"user_id", userID,
+			"username", username,
 			"file_id", msg.Voice.FileID,
 			"duration", msg.Voice.Duration,
 		)
