@@ -45,7 +45,7 @@ func (u *ProcessVoiceMessage) Execute(ctx context.Context, event domain.Event) (
 		ChatID:       voiceEvent.ChatID(),
 		MessageID:    voiceEvent.MessageID,
 		FromID:       voiceEvent.UserID(),
-		FromUsername: "",
+		FromUsername: voiceEvent.Username,
 		Text:         text,
 		Timestamp:    time.Now(),
 	}
@@ -70,6 +70,22 @@ func (u *ProcessVoiceMessage) Execute(ctx context.Context, event domain.Event) (
 	if err != nil {
 		u.logger.Errorw("Failed to generate answer", "error", err)
 		return domain.NewTextResponse("Ошибка генерации ответа"), err
+	}
+
+	// Сохраняем ответ бота в историю
+	botMessage := &domain.Message{
+		ChatID:       voiceEvent.ChatID(),
+		MessageID:    0, // Будет установлено после отправки
+		FromID:       0, // ID бота
+		FromUsername: "bot",
+		Text:         answer,
+		Timestamp:    time.Now(),
+	}
+
+	err = u.dialogHistoryService.SaveMessage(ctx, voiceEvent.UserID(), botMessage)
+	if err != nil {
+		u.logger.Warnw("Failed to save bot message", "error", err)
+		// Не критично, продолжаем
 	}
 
 	return domain.NewTextResponse("Текст из голоса: " + text + "\n\nОтвет: " + answer), nil

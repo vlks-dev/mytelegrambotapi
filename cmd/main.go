@@ -77,6 +77,7 @@ func main() {
 	// Инициализация use cases
 	startUser := usecases.NewStartUser(userRepository, sugaredLogger)
 	helpUser := usecases.NewHelpUser(sugaredLogger)
+	resetDialog := usecases.NewResetDialog(dialogHistoryService, sugaredLogger)
 	chatWithAI := usecases.NewChatWithAI(aiService, dialogHistoryService, sugaredLogger)
 	processVoice := usecases.NewProcessVoiceMessage(speechToTextService, aiService, dialogHistoryService, sugaredLogger)
 	handleCallback := usecases.NewHandleCallback(sugaredLogger)
@@ -87,6 +88,7 @@ func main() {
 	router := routing.NewEventRouter(sugaredLogger)
 	router.RegisterCommandHandler("start", startUser)
 	router.RegisterCommandHandler("help", helpUser)
+	router.RegisterCommandHandler("reset", resetDialog)
 	router.RegisterCommandHandler("admin", adminUseCases)
 	router.RegisterMessageHandler(chatWithAI)
 	router.RegisterVoiceHandler(processVoice)

@@ -32,27 +32,44 @@ func NewAIService(r1 deepseek.R1, logger *zap.SugaredLogger) AIService {
 
 // GenerateAnswer генерирует ответ на основе диалога
 func (s *aiService) GenerateAnswer(ctx context.Context, dialog []domain.Message) (string, error) {
-	// Формируем текст из истории диалога
-	var dialogText string
-	for _, msg := range dialog {
-		if msg.Text != "" {
-			dialogText += msg.Text + "\n"
-		}
-	}
-
 	// Если диалог пустой, возвращаем ошибку
-	if dialogText == "" {
-		return "", fmt.Errorf("empty dialog")
-	}
-
-	// Используем последнее сообщение как вопрос
 	if len(dialog) == 0 {
 		return "", fmt.Errorf("empty dialog")
 	}
-	question := dialog[len(dialog)-1].Text
 
-	// Вызываем R1 для генерации ответа
-	answerJSON, err := s.r1.AnswerQuestion(ctx, question)
+	// Преобразуем историю диалога в формат ChatMessage с ролями
+	chatMessages := make([]deepseek.ChatMessage, 0, len(dialog))
+	
+	for _, msg := range dialog {
+		if msg.Text == "" {
+			continue // Пропускаем пустые сообщения
+		}
+		
+		// Определяем роль сообщения: если from_id == 0 или from_username == "bot", то это ответ ассистента
+		role := "user"
+		if msg.FromID == 0 || msg.FromUsername == "bot" {
+			role = "assistant"
+		}
+		
+		chatMessages = append(chatMessages, deepseek.ChatMessage{
+			Role:    role,
+			Content: msg.Text,
+		})
+	}
+
+	// Если после фильтрации нет сообщений, возвращаем ошибку
+	if len(chatMessages) == 0 {
+		return "", fmt.Errorf("empty dialog after filtering")
+	}
+
+	s.logger.Debugw("Generating answer with context", 
+		"total_messages", len(chatMessages),
+		"user_messages", countMessagesByRole(chatMessages, "user"),
+		"assistant_messages", countMessagesByRole(chatMessages, "assistant"),
+	)
+
+	// Вызываем R1 для генерации ответа с историей
+	answerJSON, err := s.r1.AnswerWithHistory(ctx, chatMessages)
 	if err != nil {
 		s.logger.Errorw("Failed to get AI answer", "error", err)
 		return "", fmt.Errorf("failed to get AI answer: %w", err)
@@ -80,6 +97,17 @@ func (s *aiService) GenerateAnswer(ctx context.Context, dialog []domain.Message)
 	}
 
 	return result, nil
+}
+
+// countMessagesByRole подсчитывает количество сообщений с определенной ролью
+func countMessagesByRole(messages []deepseek.ChatMessage, role string) int {
+	count := 0
+	for _, msg := range messages {
+		if msg.Role == role {
+			count++
+		}
+	}
+	return count
 }
 
 // aiServiceStub заглушка реализации AIService

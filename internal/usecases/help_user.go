@@ -23,7 +23,8 @@ func (u *HelpUser) Execute(ctx context.Context, event domain.Event) (*domain.Bot
 	helpText := "Я Простой чат-бот на основе Openai API, написанный на Golang, с используемой моделью - DeepSeek V3.\n\n" +
 		"Доступные команды:\n" +
 		"/start - Начать работу с ботом\n" +
-		"/help - Показать эту справку\n\n" +
+		"/help - Показать эту справку\n" +
+		"/reset - Сбросить контекст диалога (я забуду предыдущие сообщения)\n\n" +
 		"Просто отправьте мне текстовое сообщение, и я постараюсь ответить на ваш вопрос!"
 	return domain.NewTextResponse(helpText), nil
 }
